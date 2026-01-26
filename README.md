@@ -1,73 +1,35 @@
-# React + TypeScript + Vite
+# Antigravity Movie Maker
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+이미지와 오디오를 결합하여 고품질 MP4 영상을 생성하는 Electron 기반 데스크톱 애플리케이션입니다.
 
-Currently, two official plugins are available:
+## 주요 기능
+- **미디어 관리**: 다중 이미지 업로드 및 오디오(MP3) 연동
+- **렌더링 엔진**: 고성능 FFmpeg 기반 비디오 인코딩
+- **UI/UX**: 최신 글래스모피즘(Glassmorphism) 테마 및 다크 모드
+- **자동 동기화**: 영상의 길이를 오디오 길이에 맞춰 자동 조절
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 사용 방법
+1. **의존성 설치**: `npm install`
+2. **개발 서버 시작**: `npm run dev`
+3. **Electron 앱 실행**: `npm run electron:dev`
 
-## React Compiler
+## FFmpeg 인코딩 설정 (Technical Specs)
+이 프로젝트에서 사용된 핵심 FFmpeg 옵션 및 필터 설정은 다음과 같습니다:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 1. 비디오 필터 구성 (`filter_complex`)
+- **Concat**: `[v:0][v:1]...concat=n={count}:v=1:a=0[v1]` - 여러 장의 이미지를 하나의 비디오 스트림으로 연결합니다.
+- **Scaling/Padding**: `scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2` - 이미지의 비율을 유지하며 화면을 채우고, 부족한 부분은 검은색 여백(Letterbox)으로 처리합니다.
+- **Pixel Format**: `format=yuv420p` - 다양한 재생 기기와의 호환성을 보장합니다.
 
-## Expanding the ESLint configuration
+### 2. 오디오 처리
+- **Codec**: `aac` - 고품질 오디오 압축을 위해 사용됩니다.
+- **Mapping**: 영상 필터 출력(`[vout]`)과 오디오 필터 출력(`[aout]`)을 명시적으로 매핑하여 스트림 누락을 방지합니다.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### 3. 출력 제어 옵션
+- **Duration Control**: `-t {duration}` - `ffprobe-static`으로 측정된 오디오 길이를 기반으로 영상의 끝을 정확히 지정합니다.
+- **Shortest**: `-shortest` - 오디오나 영상 중 짧은 스트림을 기준으로 최종 파일을 마감하여 싱크 문제를 해결합니다.
+- **Video Codec**: `libx264` - 가장 대중적인 고효율 비디오 코덱을 사용합니다.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## 기술 스택
+- **Frontend**: React 19, Vite 7, Tailwind CSS v4, Lucide React
+- **Backend**: Electron 40, FFmpeg (via fluent-ffmpeg), ffmpeg-static, ffprobe-static
