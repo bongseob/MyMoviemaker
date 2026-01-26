@@ -108,7 +108,20 @@ ipcMain.handle('export-video', async (event, data) => {
                 filterString += `[0:v]null[v1]; `;
             }
 
-            filterString += `[v1]scale=${resolution.replace('x', ':')}:force_original_aspect_ratio=decrease,pad=${resolution.replace('x', ':')}:(ow-iw)/2:(oh-ih)/2,format=yuv420p[vout]`;
+            const titleText = data.titleText;
+            let videoStream = 'v1';
+
+            // Add title overlay if provided
+            if (titleText) {
+                // Escape title text for FFmpeg
+                const escapedTitle = titleText.replace(/'/g, "'\\\\''").replace(/:/g, '\\:');
+                // Use Malgun Gothic on Windows (special escaping for colons in filter_complex)
+                const fontPath = 'C\\\\:/Windows/Fonts/malgun.ttf';
+                filterString += `[${videoStream}]drawtext=fontfile='${fontPath}':text='${escapedTitle}':fontcolor=white:fontsize=80:x=(w-text_w)/2:y=h-th-150:borderw=3:bordercolor=black[vtext]; `;
+                videoStream = 'vtext';
+            }
+
+            filterString += `[${videoStream}]scale=${resolution.replace('x', ':')}:force_original_aspect_ratio=decrease,pad=${resolution.replace('x', ':')}:(ow-iw)/2:(oh-ih)/2,format=yuv420p[vout]`;
 
             if (audioPath) {
                 filterString += `; [${audioInputIndex}:a]anull[aout]`;
