@@ -36,5 +36,13 @@
 - **Frontend**: React 19, Vite 7, Tailwind CSS v4, Lucide React
 - **Backend**: Electron 40, FFmpeg (via fluent-ffmpeg), ffmpeg-static, ffprobe-static
 
-## FFmpeg 명령어 (예시)
-FFmpeg started: ffmpeg -loop 1 -i C:\Users\USER\Downloads\112.png -i C:\Users\USER\Downloads\111.mp3 -y -filter_complex [0:v]null[v1]; [v1]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,format=yuv420p[vout]; [1:a]anull[aout] -acodec aac -vcodec libx264 -t 37.8 -map [vout] -map [aout] -pix_fmt yuv420p -t 37.8 -shortest C:\Users\USER\Downloads\output.mp4
+## FFmpeg 명령어 발전 기록
+- **자막이 추가된 옵션값 (한글 깨짐)**
+```bash
+FFmpeg started: ffmpeg -loop 1 -i C:\Users\USER\Downloads\112.png -i C:\Users\USER\Downloads\111.mp3 -y -filter_complex [0:v]null[v1]; [v1]drawtext=fontfile='C\\:/Windows/Fonts/malgun.ttf':text='?닿쾬? ?붾㈃???먮쭑?낅땲??':fontcolor=white:fontsize=80:x=(w-text_w)/2:y=h-th-150:borderw=3:bordercolor=black[vtext]; [vtext]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,format=yuv420p[vout]; [1:a]anull[aout] -acodec aac -vcodec libx264 -t 37.8 -map [vout] -map [aout] -pix_fmt yuv420p -t 37.8 -shortest C:\Users\USER\Downloads\output.mp4
+```
+
+- **자막의 세로 정렬, 한 줄 길이 계산 후 줄 바꿈 처리 (한글)**
+```bash
+FFmpeg started: ffmpeg -loop 1 -i C:\Users\USER\Downloads\112.png -i C:\Users\USER\Downloads\111.mp3 -y -filter_complex [0:v]null[v1]; [v1]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,format=yuv420p[vscaled]; [vscaled]drawtext=fontfile='C\:/Windows/Fonts/malgun.ttf':text='?곕━???먮옉?ㅻ윴 ???誘쇨뎅??臾닿턿??諛쒖ㄽ??琉쇳빐???щ윭 ?좎벖??':fontcolor=white:fontsize=100:x=(w-text_w)/2:y=(h-th)/2:borderw=4:bordercolor=black:fix_bounds=true:text_align=center:line_spacing=20[vout]; [1:a]anull[aout] -acodec aac -vcodec libx264 -t 37.8 -map [vout] -map [aout] -pix_fmt yuv420p -t 37.8 -shortest C:\Users\USER\Downloads\output.mp4
+```
