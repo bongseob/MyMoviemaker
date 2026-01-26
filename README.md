@@ -1,5 +1,7 @@
 # Antigravity Movie Maker
 
+![Application Preview](./screenshots/app_preview.png)
+
 이미지와 오디오를 결합하여 고품질 MP4 영상을 생성하는 Electron 기반 데스크톱 애플리케이션입니다.
 
 ## 주요 기능
@@ -33,3 +35,6 @@
 ## 기술 스택
 - **Frontend**: React 19, Vite 7, Tailwind CSS v4, Lucide React
 - **Backend**: Electron 40, FFmpeg (via fluent-ffmpeg), ffmpeg-static, ffprobe-static
+
+## FFmpeg 명령어 (예시)
+FFmpeg started: ffmpeg -loop 1 -i C:\Users\USER\Downloads\112.png -i C:\Users\USER\Downloads\111.mp3 -y -filter_complex [0:v]null[v1]; [v1]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,format=yuv420p[vout]; [1:a]anull[aout] -acodec aac -vcodec libx264 -t 37.8 -map [vout] -map [aout] -pix_fmt yuv420p -t 37.8 -shortest C:\Users\USER\Downloads\output.mp4

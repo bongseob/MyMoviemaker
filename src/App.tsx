@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus,
   Settings,
@@ -11,7 +11,8 @@ import {
   Clock,
   Layers,
   Loader2,
-  CheckCircle2
+  CheckCircle2,
+  UploadCloud
 } from 'lucide-react';
 
 interface Project {
@@ -34,6 +35,8 @@ export default function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportSuccess, setExportSuccess] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [titleText, setTitleText] = useState('');
 
   useEffect(() => {
     if ((window as any).electron) {
@@ -42,6 +45,78 @@ export default function App() {
       });
     }
   }, []);
+
+  // Global Drag and Drop Handlers
+  const handleGlobalDrag = useCallback((e: DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === 'dragover' || e.type === 'dragenter') {
+      setIsDragging(true);
+    } else if (e.type === 'dragleave') {
+      // Small delay to prevent flickering
+      if (e.relatedTarget === null) {
+        setIsDragging(false);
+      }
+    }
+  }, []);
+
+  const handleGlobalDrop = useCallback((e: DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    if (!project) return;
+
+    const files = Array.from(e.dataTransfer?.files || []);
+    console.log('Files dropped:', files.length);
+
+    const { electron } = window as any;
+    if (!electron) return;
+
+    // Use webUtils.getPathForFile exposed via preload
+    const filePaths: string[] = files.map((f: any) => {
+      try {
+        return electron.getPathForFile(f) || f.path || '';
+      } catch (err) {
+        console.error('Error getting path:', err);
+        return f.path || '';
+      }
+    }).filter(p => !!p);
+
+    console.log('Processed paths:', filePaths);
+
+    const imagePaths = filePaths.filter(p => /\.(jpg|jpeg|png|webp|gif)$/i.test(p));
+    const audioPaths = filePaths.filter(p => /\.(mp3|wav|m4a|ogg)$/i.test(p));
+
+    if (imagePaths.length > 0) {
+      const newSlides = imagePaths.map((path: string, index: number) => ({
+        id: `${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
+        url: path,
+        path: path,
+        duration: 3
+      }));
+      setSlides(prev => [...prev, ...newSlides]);
+      setActiveTab('images');
+    }
+
+    if (audioPaths.length > 0) {
+      setAudioPath(audioPaths[0]);
+      setActiveTab('audio');
+    }
+  }, [project]);
+
+  useEffect(() => {
+    window.addEventListener('dragover', handleGlobalDrag);
+    window.addEventListener('dragenter', handleGlobalDrag);
+    window.addEventListener('dragleave', handleGlobalDrag);
+    window.addEventListener('drop', handleGlobalDrop);
+    return () => {
+      window.removeEventListener('dragover', handleGlobalDrag);
+      window.removeEventListener('dragenter', handleGlobalDrag);
+      window.removeEventListener('dragleave', handleGlobalDrag);
+      window.removeEventListener('drop', handleGlobalDrop);
+    };
+  }, [handleGlobalDrag, handleGlobalDrop]);
 
   const handleExport = async () => {
     if (slides.length === 0) {
@@ -71,7 +146,8 @@ export default function App() {
         slides,
         audioPath,
         outputPath: result.filePath,
-        aspectRatio: project?.aspectRatio
+        aspectRatio: project?.aspectRatio,
+        titleText: titleText
       });
       setExportSuccess(true);
     } catch (err) {
@@ -95,8 +171,8 @@ export default function App() {
 
     if (!result.canceled && result.filePaths.length > 0) {
       const newSlides = result.filePaths.map((path: string, index: number) => ({
-        id: `${Date.now()}-${index}`,
-        url: path, // Use absolute path directly with webSecurity: false
+        id: `${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
+        url: path,
         path: path,
         duration: 3
       }));
@@ -160,7 +236,16 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-background text-slate-200 overflow-hidden">
+    <div className="h-screen flex flex-col bg-background text-slate-200 overflow-hidden relative">
+      {/* Global Drag Overlay */}
+      {isDragging && (
+        <div className="absolute inset-0 z-50 bg-primary/20 backdrop-blur-md border-4 border-dashed border-primary m-4 rounded-3xl flex flex-col items-center justify-center animate-in fade-in duration-300 pointer-events-none">
+          <UploadCloud className="w-24 h-24 text-primary animate-bounce mb-4" />
+          <h2 className="text-3xl font-bold text-white uppercase tracking-tighter">Drop files to add</h2>
+          <p className="text-primary-foreground/70 font-medium">Images & Audio supported</p>
+        </div>
+      )}
+
       <header className="h-12 border-b border-white/10 flex items-center justify-between px-6 drag-region">
         <div className="flex items-center gap-3">
           <Layers className="w-5 h-5 text-primary" />
@@ -209,7 +294,7 @@ export default function App() {
               <>
                 <button
                   onClick={handleAddImages}
-                  className="w-full glass-card p-6 border-dashed border-2 flex flex-col items-center gap-3 hover:bg-white/10 transition-colors"
+                  className="w-full glass-card p-6 border-dashed border-2 border-white/10 flex flex-col items-center gap-3 hover:bg-white/10 transition-colors"
                 >
                   <div className="w-10 h-10 bg-primary/20 rounded-full flex items-center justify-center">
                     <Plus className="w-6 h-6 text-primary" />
@@ -249,7 +334,7 @@ export default function App() {
               <div className="space-y-4">
                 <button
                   onClick={handleAddAudio}
-                  className="w-full glass-card p-6 border-dashed border-2 flex flex-col items-center gap-3 hover:bg-white/10 transition-colors"
+                  className="w-full glass-card p-6 border-dashed border-2 border-white/10 flex flex-col items-center gap-3 hover:bg-white/10 transition-colors"
                 >
                   <div className="w-10 h-10 bg-secondary/20 rounded-full flex items-center justify-center">
                     <Music className="w-6 h-6 text-secondary" />
@@ -274,6 +359,22 @@ export default function App() {
                 )}
               </div>
             )}
+
+            {activeTab === 'subtitles' && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] text-slate-500 uppercase tracking-widest">Main Title Overlay</label>
+                  <input
+                    type="text"
+                    value={titleText}
+                    onChange={(e) => setTitleText(e.target.value)}
+                    placeholder="Enter video title..."
+                    className="w-full bg-black/40 border border-white/10 rounded-lg p-3 text-sm focus:border-primary outline-none transition-all text-white"
+                  />
+                  <p className="text-[10px] text-slate-500 italic">This will appear at the bottom of the video.</p>
+                </div>
+              </div>
+            )}
           </div>
         </aside>
 
@@ -292,9 +393,18 @@ export default function App() {
                   </button>
                 </div>
               ) : (
-                <div className="text-slate-600 flex flex-col items-center gap-4">
-                  <Play className="w-16 h-16 opacity-20" />
-                  <span className="text-sm tracking-widest uppercase opacity-20">Preview Ready</span>
+                <div className="text-slate-600 flex flex-col items-center gap-4 relative w-full h-full">
+                  <div className="flex flex-col items-center gap-4">
+                    <Play className="w-16 h-16 opacity-20" />
+                    <span className="text-sm tracking-widest uppercase opacity-20">Preview Ready</span>
+                  </div>
+                  {titleText && (
+                    <div className="absolute bottom-10 left-0 right-0 text-center px-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      <span className="bg-black/60 text-white px-4 py-2 rounded text-xl font-bold shadow-lg shadow-black/40">
+                        {titleText}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
