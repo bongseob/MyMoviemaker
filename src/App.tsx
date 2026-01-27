@@ -11,7 +11,9 @@ import {
   Layers,
   Loader2,
   CheckCircle2,
-  UploadCloud
+  UploadCloud,
+  X,
+  Minus
 } from 'lucide-react';
 
 interface Project {
@@ -268,14 +270,30 @@ export default function App() {
           <Layers className="w-5 h-5 text-primary" />
           <span className="font-semibold text-sm uppercase tracking-wider">{project.name} - {project.aspectRatio}</span>
         </div>
-        <div className="flex gap-4 no-drag">
-          <button className="text-slate-400 hover:text-white transition-colors">
+        <div className="flex items-center gap-2 no-drag">
+          <button className="text-slate-400 hover:text-white transition-colors p-1">
             <Settings className="w-5 h-5" />
           </button>
+          <div className="h-4 w-[1px] bg-white/10 mx-1" />
+          <button
+            onClick={() => (window as any).electron.minimize()}
+            className="text-slate-400 hover:text-white hover:bg-white/5 p-1 rounded transition-all"
+            title="Minimize"
+          >
+            <Minus className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => (window as any).electron.close()}
+            className="text-slate-400 hover:text-red-400 hover:bg-red-500/10 p-1 rounded transition-all"
+            title="Close"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <div className="w-2" />
           <button
             onClick={handleExport}
             disabled={isExporting}
-            className={`${isExporting ? 'bg-slate-700' : 'bg-primary hover:bg-primary/80'} text-white px-4 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-2`}
+            className={`${isExporting ? 'bg-slate-700' : 'bg-primary hover:bg-primary/80'} text-white px-4 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-2 ml-2`}
           >
             {isExporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
             {isExporting ? `EXPORTING ${exportProgress}%` : 'EXPORT'}
