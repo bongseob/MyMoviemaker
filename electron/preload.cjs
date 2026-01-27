@@ -6,4 +6,6 @@ contextBridge.exposeInMainWorld('electron', {
     exportVideo: (data) => ipcRenderer.invoke('export-video', data),
     onProgress: (callback) => ipcRenderer.on('export-progress', (event, value) => callback(value)),
     getPathForFile: (file) => webUtils.getPathForFile(file),
+    minimize: () => ipcRenderer.send('window-minimize'),
+    close: () => ipcRenderer.send('window-close'),
 });

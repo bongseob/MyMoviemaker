@@ -37,10 +37,18 @@ app.on('window-all-closed', function () {
 });
 
 const ffmpeg = require('fluent-ffmpeg');
-const ffmpegPath = require('ffmpeg-static');
 const fs = require('fs');
 
-const ffprobePath = require('ffprobe-static').path;
+// Fix for FFmpeg in ASAR
+let ffmpegPath = require('ffmpeg-static');
+let ffprobePath = require('ffprobe-static').path;
+
+if (!isDev) {
+    // electron-builder moves unpacked binaries to 'app.asar.unpacked'
+    ffmpegPath = ffmpegPath.replace('app.asar', 'app.asar.unpacked');
+    ffprobePath = ffprobePath.replace('app.asar', 'app.asar.unpacked');
+}
+
 ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath);
 
@@ -63,6 +71,14 @@ ipcMain.handle('select-files', async (event, options) => {
 ipcMain.handle('select-save-path', async (event, options) => {
     const result = await dialog.showSaveDialog(options);
     return result;
+});
+
+ipcMain.on('window-minimize', () => {
+    BrowserWindow.getFocusedWindow()?.minimize();
+});
+
+ipcMain.on('window-close', () => {
+    BrowserWindow.getFocusedWindow()?.close();
 });
 
 ipcMain.handle('export-video', async (event, data) => {
@@ -108,20 +124,82 @@ ipcMain.handle('export-video', async (event, data) => {
                 filterString += `[0:v]null[v1]; `;
             }
 
+            // 1. Scale and pad FIRST to standardize resolution (crucial for consistent text size)
+            filterString += `[v1]scale=${resolution.replace('x', ':')}:force_original_aspect_ratio=decrease,pad=${resolution.replace('x', ':')}:(ow-iw)/2:(oh-ih)/2,format=yuv420p[vscaled]`;
+
             const titleText = data.titleText;
-            let videoStream = 'v1';
+            let finalVideoPin = 'vscaled';
 
-            // Add title overlay if provided
+            // 2. Add title overlay on the standard resolution
             if (titleText) {
-                // Escape title text for FFmpeg
-                const escapedTitle = titleText.replace(/'/g, "'\\\\''").replace(/:/g, '\\:');
-                // Use Malgun Gothic on Windows (special escaping for colons in filter_complex)
-                const fontPath = 'C\\\\:/Windows/Fonts/malgun.ttf';
-                filterString += `[${videoStream}]drawtext=fontfile='${fontPath}':text='${escapedTitle}':fontcolor=white:fontsize=80:x=(w-text_w)/2:y=h-th-150:borderw=3:bordercolor=black[vtext]; `;
-                videoStream = 'vtext';
-            }
+                const wrapText = (text, width) => {
+                    // Increased weight limit to reduce safe area (more chars per line)
+                    const maxWeight = width > 1500 ? 26 : 11;
+                    let lines = [];
+                    let currentLine = '';
+                    let currentWeight = 0;
 
-            filterString += `[${videoStream}]scale=${resolution.replace('x', ':')}:force_original_aspect_ratio=decrease,pad=${resolution.replace('x', ':')}:(ow-iw)/2:(oh-ih)/2,format=yuv420p[vout]`;
+                    const getWeight = (char) => (char.charCodeAt(0) > 255 ? 1 : 0.5);
+
+                    const words = text.split(' ');
+                    words.forEach(word => {
+                        let wordWeight = 0;
+                        for (let char of word) wordWeight += getWeight(char);
+
+                        if (wordWeight > maxWeight) {
+                            if (currentLine) lines.push(currentLine.trim());
+                            let tempWord = '';
+                            let tempWeight = 0;
+                            for (let char of word) {
+                                let cw = getWeight(char);
+                                if (tempWeight + cw > maxWeight) {
+                                    lines.push(tempWord);
+                                    tempWord = char;
+                                    tempWeight = cw;
+                                } else {
+                                    tempWord += char;
+                                    tempWeight += cw;
+                                }
+                            }
+                            currentLine = tempWord + ' ';
+                            currentWeight = tempWeight + 0.5;
+                        } else if (currentWeight + wordWeight > maxWeight) {
+                            lines.push(currentLine.trim());
+                            currentLine = word + ' ';
+                            currentWeight = wordWeight + 0.5;
+                        } else {
+                            currentLine += word + ' ';
+                            currentWeight += wordWeight + 0.5;
+                        }
+                    });
+
+                    if (currentLine) lines.push(currentLine.trim());
+                    return lines.filter(l => l.length > 0).join('\n');
+                };
+
+                const videoWidth = aspectRatio === '16:9' ? 1920 : 1080;
+                const wrappedTitle = wrapText(titleText, videoWidth);
+
+                const escapedTitle = wrappedTitle
+                    .replace(/\\/g, '\\\\')
+                    .replace(/'/g, "'\\''")
+                    .replace(/:/g, '\\:')
+                    .replace(/,/g, '\\,')
+                    .replace(/\n/g, '\r');
+
+                const fontPath = 'C\\:/Windows/Fonts/malgun.ttf';
+                const position = data.titlePosition || 'bottom';
+
+                let yPos = 'h-th-160'; // Tighter bottom margin
+                if (position === 'top') yPos = '110'; // Tighter top margin
+                else if (position === 'center') yPos = '(h-th)/2';
+
+                filterString += `; [vscaled]drawtext=fontfile='${fontPath}':text='${escapedTitle}':fontcolor=white:fontsize=100:x=(w-text_w)/2:y=${yPos}:borderw=4:bordercolor=black:fix_bounds=true:text_align=center:line_spacing=20[vout]`;
+                finalVideoPin = 'vout';
+            } else {
+                // If no text, the output of scale is our final output
+                filterString += `; [vscaled]null[vout]`;
+            }
 
             if (audioPath) {
                 filterString += `; [${audioInputIndex}:a]anull[aout]`;

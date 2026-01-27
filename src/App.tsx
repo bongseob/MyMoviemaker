@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Plus,
   Settings,
@@ -37,6 +37,7 @@ export default function App() {
   const [exportSuccess, setExportSuccess] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [titleText, setTitleText] = useState('');
+  const [titlePosition, setTitlePosition] = useState<'top' | 'center' | 'bottom'>('center');
 
   useEffect(() => {
     if ((window as any).electron) {
@@ -147,7 +148,8 @@ export default function App() {
         audioPath,
         outputPath: result.filePath,
         aspectRatio: project?.aspectRatio,
-        titleText: titleText
+        titleText: titleText,
+        titlePosition: titlePosition
       });
       setExportSuccess(true);
     } catch (err) {
@@ -162,7 +164,7 @@ export default function App() {
     setProject({ name: 'New Project', aspectRatio: ratio });
   };
 
-  const handleAddImages = async () => {
+  const handleAddImages = async (index?: number) => {
     if (!(window as any).electron) return;
     const result = await (window as any).electron.selectFiles({
       properties: ['openFile', 'multiSelections'],
@@ -170,13 +172,20 @@ export default function App() {
     });
 
     if (!result.canceled && result.filePaths.length > 0) {
-      const newSlides = result.filePaths.map((path: string, index: number) => ({
-        id: `${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
+      const newSlides = result.filePaths.map((path: string, idx: number) => ({
+        id: `${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 9)}`,
         url: path,
         path: path,
         duration: 3
       }));
-      setSlides([...slides, ...newSlides]);
+
+      if (typeof index === 'number') {
+        const updatedSlides = [...slides];
+        updatedSlides.splice(index + 1, 0, ...newSlides);
+        setSlides(updatedSlides);
+      } else {
+        setSlides([...slides, ...newSlides]);
+      }
     }
   };
 
@@ -194,6 +203,13 @@ export default function App() {
 
   const removeSlide = (id: string) => {
     setSlides(slides.filter(s => s.id !== id));
+  };
+
+  const clearSlides = () => {
+    if (slides.length === 0) return;
+    if (confirm('모든 슬라이드를 삭제하시겠습니까?')) {
+      setSlides([]);
+    }
   };
 
   if (!project) {
@@ -293,7 +309,7 @@ export default function App() {
             {activeTab === 'images' && (
               <>
                 <button
-                  onClick={handleAddImages}
+                  onClick={() => handleAddImages()}
                   className="w-full glass-card p-6 border-dashed border-2 border-white/10 flex flex-col items-center gap-3 hover:bg-white/10 transition-colors"
                 >
                   <div className="w-10 h-10 bg-primary/20 rounded-full flex items-center justify-center">
@@ -373,6 +389,24 @@ export default function App() {
                   />
                   <p className="text-[10px] text-slate-500 italic">This will appear at the bottom of the video.</p>
                 </div>
+
+                <div className="space-y-2 pt-4">
+                  <label className="text-[10px] text-slate-500 uppercase tracking-widest">Position</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['top', 'center', 'bottom'] as const).map((pos) => (
+                      <button
+                        key={pos}
+                        onClick={() => setTitlePosition(pos)}
+                        className={`py-2 text-[10px] font-bold uppercase rounded-md border transition-all ${titlePosition === pos
+                          ? 'bg-teal-500/20 border-teal-500 text-teal-400'
+                          : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10'
+                          }`}
+                      >
+                        {pos}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -399,8 +433,13 @@ export default function App() {
                     <span className="text-sm tracking-widest uppercase opacity-20">Preview Ready</span>
                   </div>
                   {titleText && (
-                    <div className="absolute bottom-10 left-0 right-0 text-center px-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                      <span className="bg-black/60 text-white px-4 py-2 rounded text-xl font-bold shadow-lg shadow-black/40">
+                    <div
+                      className={`absolute left-0 right-0 text-center px-4 animate-in fade-in slide-in-from-bottom-2 duration-300 ${titlePosition === 'top' ? 'top-10' :
+                        titlePosition === 'center' ? 'top-1/2 -translate-y-1/2' :
+                          'bottom-10'
+                        }`}
+                    >
+                      <span className="bg-black/60 text-white px-4 py-2 rounded text-xl font-bold shadow-lg shadow-black/40 whitespace-pre-wrap break-words inline-block max-w-[90%]">
                         {titleText}
                       </span>
                     </div>
@@ -417,8 +456,20 @@ export default function App() {
                 <span className="text-xs font-mono text-slate-400">00:00:00 / 00:00:00</span>
               </div>
               <div className="flex gap-2">
-                <button className="p-2 border border-white/10 rounded-md hover:bg-white/5"><Plus className="w-4 h-4" /></button>
-                <button className="p-2 border border-white/10 rounded-md hover:bg-white/5"><Trash2 className="w-4 h-4" /></button>
+                <button
+                  onClick={() => handleAddImages()}
+                  className="p-2 border border-white/10 rounded-md hover:bg-white/5 active:bg-white/10 transition-colors"
+                  title="이미지 추가"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={clearSlides}
+                  className="p-2 border border-white/10 rounded-md hover:bg-white/5 active:bg-white/10 transition-colors text-slate-400 hover:text-red-400"
+                  title="전체 삭제"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             </div>
             <div className="flex-1 bg-black/40 rounded-xl border border-white/5 p-4 flex gap-2 overflow-x-auto items-center">
@@ -440,9 +491,12 @@ export default function App() {
                       <div className="absolute bottom-0 left-0 right-0 h-1 bg-primary/50" />
                     </div>
                     {idx < slides.length - 1 && (
-                      <div className="w-8 h-8 flex-shrink-0 rounded-full bg-white/5 flex items-center justify-center group hover:bg-white/10 transition-colors">
+                      <button
+                        onClick={() => handleAddImages(idx)}
+                        className="w-8 h-8 flex-shrink-0 rounded-full bg-white/5 flex items-center justify-center group hover:bg-white/10 transition-colors"
+                      >
                         <Plus className="w-3 h-3 text-slate-500 group-hover:text-primary" />
-                      </div>
+                      </button>
                     )}
                   </div>
                 ))
