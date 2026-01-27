@@ -6,7 +6,6 @@ import {
   Download,
   Image as ImageIcon,
   Music,
-  Type,
   Trash2,
   Clock,
   Layers,
@@ -38,6 +37,7 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [titleText, setTitleText] = useState('');
   const [titlePosition, setTitlePosition] = useState<'top' | 'center' | 'bottom'>('center');
+  const [targetDuration, setTargetDuration] = useState(3);
 
   useEffect(() => {
     if ((window as any).electron) {
@@ -149,7 +149,8 @@ export default function App() {
         outputPath: result.filePath,
         aspectRatio: project?.aspectRatio,
         titleText: titleText,
-        titlePosition: titlePosition
+        titlePosition: titlePosition,
+        targetDuration: targetDuration
       });
       setExportSuccess(true);
     } catch (err) {
@@ -301,7 +302,7 @@ export default function App() {
               onClick={() => setActiveTab('subtitles')}
               className={`flex-1 p-4 transition-colors flex justify-center ${activeTab === 'subtitles' ? 'border-b-2 border-teal-500 bg-teal-500/10' : 'hover:bg-white/5'}`}
             >
-              <Type className="w-5 h-5 text-teal-400" />
+              <Settings className="w-5 h-5 text-teal-400" />
             </button>
           </div>
 
@@ -377,7 +378,25 @@ export default function App() {
             )}
 
             {activeTab === 'subtitles' && (
-              <div className="space-y-4">
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] text-slate-500 uppercase tracking-widest">Video Duration (Seconds)</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min="1"
+                      max="3600"
+                      value={targetDuration}
+                      onChange={(e) => setTargetDuration(Number(e.target.value))}
+                      className="flex-1 bg-black/40 border border-white/10 rounded-lg p-3 text-sm focus:border-primary outline-none transition-all text-white"
+                    />
+                    <span className="text-sm text-slate-400">sec</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 italic">
+                    {audioPath ? 'Audio length will override this value.' : 'Default: 3 seconds'}
+                  </p>
+                </div>
+
                 <div className="space-y-2">
                   <label className="text-[10px] text-slate-500 uppercase tracking-widest">Main Title Overlay</label>
                   <input
@@ -387,10 +406,9 @@ export default function App() {
                     placeholder="Enter video title..."
                     className="w-full bg-black/40 border border-white/10 rounded-lg p-3 text-sm focus:border-primary outline-none transition-all text-white"
                   />
-                  <p className="text-[10px] text-slate-500 italic">This will appear at the bottom of the video.</p>
                 </div>
 
-                <div className="space-y-2 pt-4">
+                <div className="space-y-2">
                   <label className="text-[10px] text-slate-500 uppercase tracking-widest">Position</label>
                   <div className="grid grid-cols-3 gap-2">
                     {(['top', 'center', 'bottom'] as const).map((pos) => (

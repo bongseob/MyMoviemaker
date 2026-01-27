@@ -82,14 +82,13 @@ ipcMain.on('window-close', () => {
 });
 
 ipcMain.handle('export-video', async (event, data) => {
-    const { slides, audioPath, outputPath, aspectRatio } = data;
+    const { slides, audioPath, outputPath, aspectRatio, targetDuration } = data;
     const resolution = aspectRatio === '16:9' ? '1920x1080' : '1080x1920';
 
-    let totalDuration = 0;
+    let totalDuration = targetDuration || 3;
     if (audioPath) {
-        totalDuration = await getAudioDuration(audioPath.replace('file://', ''));
-    } else {
-        totalDuration = slides.reduce((acc, s) => acc + s.duration, 0);
+        const audioLen = await getAudioDuration(audioPath.replace('file://', ''));
+        if (audioLen > 0) totalDuration = audioLen;
     }
 
     console.log('Exporting video to:', outputPath);
@@ -99,38 +98,57 @@ ipcMain.handle('export-video', async (event, data) => {
         let command = ffmpeg();
 
         try {
-            // 1. Combine images
+            // 1. Prepare and standardize each image input
+            const activeSlides = [];
+            let filters = [];
+            const resolutionStr = resolution.replace('x', ':');
+
             slides.forEach((slide, index) => {
-                const cleanPath = slide.path.replace('file://', '');
+                const startTime = index * 3;
+                if (startTime >= totalDuration) return;
+
+                // Path cleanup for Windows
+                const cleanPath = slide.path.replace('file://', '').replace(/^\/([a-zA-Z]:)/, '$1');
                 if (fs.existsSync(cleanPath)) {
-                    // If solo image should cover audio, or it's the last image
-                    // We use -t on output, so a long loop here is fine as long as we cap output
-                    command = command.input(cleanPath).loop(totalDuration || 3600);
+                    const isLast = (index === slides.length - 1);
+                    const slideDuration = Math.max(0.1, isLast ? (totalDuration - startTime) : 3);
+
+                    if (slideDuration > 0) {
+                        // Crucial: Set -framerate BEFORE input for loop
+                        command = command.input(cleanPath).inputOptions([
+                            '-loop 1',
+                            `-t ${slideDuration}`,
+                            '-framerate 25'
+                        ]);
+                        activeSlides.push(slide);
+
+                        // Standardize each input with explicit fps
+                        filters.push(`[${activeSlides.length - 1}:v]scale=${resolutionStr}:force_original_aspect_ratio=decrease,pad=${resolutionStr}:(ow-iw)/2:(oh-ih)/2,fps=25,setsar=1[v${activeSlides.length - 1}]`);
+                    }
                 }
             });
 
             // 2. Add Audio
             if (audioPath) {
-                command = command.input(audioPath.replace('file://', ''));
+                const cleanAudioPath = audioPath.replace('file://', '').replace(/^\/([a-zA-Z]:)/, '$1');
+                command = command.input(cleanAudioPath);
             }
 
-            const videoLabels = slides.map((_, i) => `[${i}:v]`).join('');
-            const audioInputIndex = slides.length;
+            const videoLabels = activeSlides.map((_, i) => `[v${i}]`).join('');
+            const audioInputIndex = activeSlides.length;
 
-            let filterString = '';
-            if (slides.length > 1) {
-                filterString += `${videoLabels}concat=n=${slides.length}:v=1:a=0[v1]; `;
+            if (activeSlides.length > 1) {
+                filters.push(`${videoLabels}concat=n=${activeSlides.length}:v=1:a=0[vconcat]`);
+            } else if (activeSlides.length === 1) {
+                filters.push(`[v0]null[vconcat]`);
             } else {
-                filterString += `[0:v]null[v1]; `;
+                throw new Error('No valid images found for export.');
             }
-
-            // 1. Scale and pad FIRST to standardize resolution (crucial for consistent text size)
-            filterString += `[v1]scale=${resolution.replace('x', ':')}:force_original_aspect_ratio=decrease,pad=${resolution.replace('x', ':')}:(ow-iw)/2:(oh-ih)/2,format=yuv420p[vscaled]`;
 
             const titleText = data.titleText;
-            let finalVideoPin = 'vscaled';
+            let finalVideoPin = 'vconcat';
 
-            // 2. Add title overlay on the standard resolution
+            // 3. Add title overlay
             if (titleText) {
                 const wrapText = (text, width) => {
                     // Increased weight limit to reduce safe area (more chars per line)
@@ -194,18 +212,19 @@ ipcMain.handle('export-video', async (event, data) => {
                 if (position === 'top') yPos = '110'; // Tighter top margin
                 else if (position === 'center') yPos = '(h-th)/2';
 
-                filterString += `; [vscaled]drawtext=fontfile='${fontPath}':text='${escapedTitle}':fontcolor=white:fontsize=100:x=(w-text_w)/2:y=${yPos}:borderw=4:bordercolor=black:fix_bounds=true:text_align=center:line_spacing=20[vout]`;
-                finalVideoPin = 'vout';
-            } else {
-                // If no text, the output of scale is our final output
-                filterString += `; [vscaled]null[vout]`;
+                // REMOVED 'text_align=center' which was causing "Filter not found"
+                filters.push(`[${finalVideoPin}]drawtext=fontfile='${fontPath}':text='${escapedTitle}':fontcolor=white:fontsize=100:x=(w-text_w)/2:y=${yPos}:borderw=4:bordercolor=black:fix_bounds=true:line_spacing=20[vtitle]`);
+                finalVideoPin = 'vtitle';
             }
+
+            // 4. Final format conversion for compatibility
+            filters.push(`[${finalVideoPin}]format=yuv420p[vout]`);
 
             if (audioPath) {
-                filterString += `; [${audioInputIndex}:a]anull[aout]`;
+                filters.push(`[${audioInputIndex}:a]anull[aout]`);
             }
 
-            command.complexFilter(filterString).map('[vout]');
+            command.complexFilter(filters.join('; ')).map('[vout]');
 
             if (audioPath) {
                 command.map('[aout]').audioCodec('aac');
@@ -216,7 +235,8 @@ ipcMain.handle('export-video', async (event, data) => {
                 .outputOptions([
                     '-pix_fmt', 'yuv420p',
                     '-t', totalDuration.toString(), // CRITICAL: Stop exactly at audio end
-                    '-shortest'
+                    '-shortest',
+                    '-r', '25' // Explicit output frame rate
                 ])
                 .on('start', (cmd) => console.log('FFmpeg started:', cmd))
                 .on('progress', (progress) => {
