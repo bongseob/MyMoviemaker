@@ -6,14 +6,17 @@
 
 ## 주요 기능
 - **미디어 관리**: 다중 이미지 업로드 및 오디오(MP3) 연동
-- **렌더링 엔진**: 고성능 FFmpeg 기반 비디오 인코딩
-- **UI/UX**: 최신 글래스모피즘(Glassmorphism) 테마 및 다크 모드
-- **자동 동기화**: 영상의 길이를 오디오 길이에 맞춰 자동 조절
+- **지능형 자막 생성**: 긴 텍스트를 입력하면 영상 길이에 맞춰 자동으로 여러 페이지의 자막(.srt) 생성 및 합성
+- **렌더링 엔진**: 고성능 FFmpeg 기반 비디오 인코딩 및 자막 번인(Burn-in)
+- **UI/UX**: 최신 글래스모피즘(Glassmorphism) 테마, 대폭 개선된 드래그 앤 드롭 인터페이스
+- **자동 파일 명명**: 시스템 날짜(YYYYMMDD)를 기반으로 내보내기 파일명 자동 제안
 
-## 사용 방법
-1. **의존성 설치**: `npm install`
-2. **개발 서버 시작**: `npm run dev`
-3. **Electron 앱 실행**: `npm run electron:dev`
+## 업데이트 내역 (최신)
+- **[2026.01.28] 자막 자동 생성 및 편의성 강화**
+  - **텍스트 기반 자막 생성**: 별도의 자막 파일 없이도 입력한 텍스트를 줄 단위로 분할하여 전체 영상 시간에 맞춰 배분하는 로직 구현
+  - **드래그 앤 드롭 해결**: 내보내기 완료 후에도 파일 추가가 가능하도록 상태 관리 수정 및 Windows 금지 마크 현상 해결
+  - **기본 파일명 변경**: 내보내기 기본 파일명을 시스템 날짜(`YYYYMMDD.mp4`)로 설정
+  - **UI 버튼 추가**: 창 최소화 및 닫기 버튼 추가
 
 ## FFmpeg 인코딩 설정 (Technical Specs)
 이 프로젝트에서 사용된 핵심 FFmpeg 옵션 및 필터 설정은 다음과 같습니다. 특히 여러 장의 이미지를 합치고 자막을 오버레이하는 과정에서 발생한 기술적 이슈들을 해결하기 위한 최적화가 포함되어 있습니다.
@@ -25,9 +28,12 @@
   - `fps=25` 명령을 통해 정지 이미지 루핑 시 발생할 수 있는 시간축 계산 오류(Invalid Argument)를 방지하고 프레임을 동기화합니다.
 - **다중 이미지 연결 (Concat)**: `[v0][v1]...concat=n={count}:v=1:a=0[vconcat]`
   - 전처리가 끝난 비디오 스트림들을 하나의 시퀀스로 연결합니다.
-- **자막 오버레이 (Drawtext)**: `drawtext=fontfile='...':text='...':fontcolor=white:fontsize=100:x=(w-text_w)/2:y={pos}:borderw=4:bordercolor=black:fix_bounds=true:line_spacing=20`
-  - 고품질 자막을 위해 외곽선(`borderw`)과 가독성을 위한 줄 간격(`line_spacing`)을 설정했습니다.
-  - `fix_bounds=true`를 사용하여 텍스트가 화면 밖으로 나가는 것을 방지합니다.
+- **자막 오버레이 (Drawtext & Subtitles)**:
+  - **타이틀 (Drawtext)**: `drawtext=fontfile='...':text='...':fontcolor=white:fontsize=100:x=(w-text_w)/2:y={pos}:borderw=4:bordercolor=black:fix_bounds=true:line_spacing=20`
+    - 고정된 제목이나 강조 문구를 입힐 때 사용합니다.
+  - **자동 자막 (Subtitles)**: `subtitles='temp_sub.srt'` (Burn-in 방식)
+    - 입력된 텍스트를 시간 단위로 쪼갠 임시 SRT 파일을 생성하여 영상 하단에 입힙니다.
+    - Windows 경로 호환성을 위해 드라이브 콜론(`:`) 이스케이프 처리를 포함했습니다.
 - **최종 포맷 변환**: `format=yuv420p`
   - 필터 체인의 마지막 단계에서 픽셀 포맷을 변환하여 모바일 및 웹 등 모든 환경에서 재생 가능한 범용성을 확보합니다.
 
