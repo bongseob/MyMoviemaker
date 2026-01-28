@@ -40,6 +40,7 @@ export default function App() {
   const [titleText, setTitleText] = useState('');
   const [titlePosition, setTitlePosition] = useState<'top' | 'center' | 'bottom'>('center');
   const [targetDuration, setTargetDuration] = useState(3);
+  const [subtitlePath, setSubtitlePath] = useState<string | null>(null);
 
   useEffect(() => {
     if ((window as any).electron) {
@@ -152,7 +153,8 @@ export default function App() {
         aspectRatio: project?.aspectRatio,
         titleText: titleText,
         titlePosition: titlePosition,
-        targetDuration: targetDuration
+        targetDuration: targetDuration,
+        subtitlePath: subtitlePath
       });
       setExportSuccess(true);
     } catch (err) {
@@ -201,6 +203,18 @@ export default function App() {
 
     if (!result.canceled && result.filePaths.length > 0) {
       setAudioPath(result.filePaths[0]);
+    }
+  };
+
+  const handleAddSubtitles = async () => {
+    if (!(window as any).electron) return;
+    const result = await (window as any).electron.selectFiles({
+      properties: ['openFile'],
+      filters: [{ name: 'Subtitles', extensions: ['srt'] }]
+    });
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      setSubtitlePath(result.filePaths[0]);
     }
   };
 
@@ -425,7 +439,6 @@ export default function App() {
                     className="w-full bg-black/40 border border-white/10 rounded-lg p-3 text-sm focus:border-primary outline-none transition-all text-white"
                   />
                 </div>
-
                 <div className="space-y-2">
                   <label className="text-[10px] text-slate-500 uppercase tracking-widest">Position</label>
                   <div className="grid grid-cols-3 gap-2">
@@ -442,6 +455,30 @@ export default function App() {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] text-slate-500 uppercase tracking-widest">Subtitle File (.srt)</label>
+                  <button
+                    onClick={handleAddSubtitles}
+                    className="w-full glass-card p-4 border-dashed border-2 border-white/10 flex flex-col items-center gap-2 hover:bg-white/10 transition-colors"
+                  >
+                    <Plus className="w-4 h-4 text-primary" />
+                    <span className="text-xs font-medium">{subtitlePath ? 'Change Subtitles' : 'Add SRT File'}</span>
+                  </button>
+                  {subtitlePath && (
+                    <div className="glass-card p-3 flex items-center gap-3 mt-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-medium truncate">{subtitlePath.split(/[\\/]/).pop()}</p>
+                      </div>
+                      <button
+                        onClick={() => setSubtitlePath(null)}
+                        className="text-slate-500 hover:text-red-400"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -541,6 +578,6 @@ export default function App() {
           </div>
         </div>
       </main>
-    </div>
+    </div >
   );
 }

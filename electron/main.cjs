@@ -82,7 +82,7 @@ ipcMain.on('window-close', () => {
 });
 
 ipcMain.handle('export-video', async (event, data) => {
-    const { slides, audioPath, outputPath, aspectRatio, targetDuration } = data;
+    const { slides, audioPath, outputPath, aspectRatio, targetDuration, subtitlePath } = data;
     const resolution = aspectRatio === '16:9' ? '1920x1080' : '1080x1920';
 
     let totalDuration = targetDuration || 3;
@@ -217,7 +217,18 @@ ipcMain.handle('export-video', async (event, data) => {
                 finalVideoPin = 'vtitle';
             }
 
-            // 4. Final format conversion for compatibility
+            // 4. Add Subtitles (SRT)
+            if (subtitlePath) {
+                const cleanSubPath = subtitlePath.replace('file://', '')
+                    .replace(/^\/([a-zA-Z]:)/, '$1')
+                    .replace(/\\/g, '/')
+                    .replace(/:/g, '\\:');
+
+                filters.push(`[${finalVideoPin}]subtitles='${cleanSubPath}'[vsub]`);
+                finalVideoPin = 'vsub';
+            }
+
+            // 5. Final format conversion for compatibility
             filters.push(`[${finalVideoPin}]format=yuv420p[vout]`);
 
             if (audioPath) {
