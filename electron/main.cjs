@@ -62,6 +62,15 @@ function getAudioDuration(filePath) {
     });
 }
 
+// Helper to format time for SRT (HH:MM:SS,mmm)
+function formatSRTTime(seconds) {
+    const date = new Date(0);
+    date.setMilliseconds(seconds * 1000);
+    const timeStr = date.toISOString().substr(11, 8);
+    const ms = Math.floor((seconds % 1) * 1000).toString().padStart(3, '0');
+    return `${timeStr},${ms}`;
+}
+
 // IPC Handlers
 ipcMain.handle('select-files', async (event, options) => {
     const result = await dialog.showOpenDialog(options);
@@ -218,8 +227,30 @@ ipcMain.handle('export-video', async (event, data) => {
             }
 
             // 4. Add Subtitles (SRT)
-            if (subtitlePath) {
-                const cleanSubPath = subtitlePath.replace('file://', '')
+            let effectiveSubPath = subtitlePath;
+            let tempSrtPath = null;
+
+            // Generate temporary SRT if subtitle text exists but no sub file is selected
+            if (!effectiveSubPath && data.subtitleTextContent) {
+                const lines = data.subtitleTextContent.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                if (lines.length > 0) {
+                    const segmentDuration = totalDuration / lines.length;
+                    let srtContent = '';
+
+                    lines.forEach((line, i) => {
+                        const start = i * segmentDuration;
+                        const end = (i + 1) * segmentDuration;
+                        srtContent += `${i + 1}\n${formatSRTTime(start)} --> ${formatSRTTime(end)}\n${line}\n\n`;
+                    });
+
+                    tempSrtPath = path.join(app.getPath('temp'), `temp_sub_${Date.now()}.srt`);
+                    fs.writeFileSync(tempSrtPath, srtContent, 'utf8');
+                    effectiveSubPath = tempSrtPath;
+                }
+            }
+
+            if (effectiveSubPath) {
+                const cleanSubPath = effectiveSubPath.replace('file://', '')
                     .replace(/^\/([a-zA-Z]:)/, '$1')
                     .replace(/\\/g, '/')
                     .replace(/:/g, '\\:');
@@ -256,11 +287,19 @@ ipcMain.handle('export-video', async (event, data) => {
                 })
                 .on('end', () => {
                     console.log('Export finished');
+                    // Cleanup temp SRT
+                    if (tempSrtPath && fs.existsSync(tempSrtPath)) {
+                        fs.unlinkSync(tempSrtPath);
+                    }
                     event.sender.send('export-progress', 100);
                     resolve({ success: true });
                 })
                 .on('error', (err, stdout, stderr) => {
                     console.error('FFmpeg error:', err.message);
+                    // Cleanup temp SRT
+                    if (tempSrtPath && fs.existsSync(tempSrtPath)) {
+                        fs.unlinkSync(tempSrtPath);
+                    }
                     reject(err);
                 })
                 .save(outputPath);

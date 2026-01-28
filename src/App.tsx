@@ -41,6 +41,7 @@ export default function App() {
   const [titlePosition, setTitlePosition] = useState<'top' | 'center' | 'bottom'>('center');
   const [targetDuration, setTargetDuration] = useState(3);
   const [subtitlePath, setSubtitlePath] = useState<string | null>(null);
+  const [subtitleTextContent, setSubtitleTextContent] = useState('');
 
   useEffect(() => {
     if ((window as any).electron) {
@@ -54,6 +55,9 @@ export default function App() {
   const handleGlobalDrag = useCallback((e: DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
     if (e.type === 'dragover' || e.type === 'dragenter') {
       setIsDragging(true);
     } else if (e.type === 'dragleave') {
@@ -68,6 +72,7 @@ export default function App() {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
+    setExportSuccess(false);
 
     if (!project) return;
 
@@ -154,7 +159,8 @@ export default function App() {
         titleText: titleText,
         titlePosition: titlePosition,
         targetDuration: targetDuration,
-        subtitlePath: subtitlePath
+        subtitlePath: subtitlePath,
+        subtitleTextContent: subtitleTextContent
       });
       setExportSuccess(true);
     } catch (err) {
@@ -438,6 +444,22 @@ export default function App() {
                     placeholder="Enter video title..."
                     className="w-full bg-black/40 border border-white/10 rounded-lg p-3 text-sm focus:border-primary outline-none transition-all text-white"
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] text-slate-500 uppercase tracking-widest">Subtitle Content (Auto-split by line)</label>
+                  <textarea
+                    value={subtitleTextContent}
+                    onChange={(e) => setSubtitleTextContent(e.target.value)}
+                    placeholder="Enter subtitles here... Each line will be a separate segment."
+                    className="w-full h-32 bg-black/40 border border-white/10 rounded-lg p-3 text-sm focus:border-primary outline-none transition-all text-white resize-none"
+                    disabled={!!subtitlePath}
+                  />
+                  {subtitlePath && (
+                    <p className="text-[10px] text-amber-500 italic">
+                      SRT file is selected. Manual text input is disabled.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] text-slate-500 uppercase tracking-widest">Position</label>
