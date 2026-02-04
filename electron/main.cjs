@@ -96,12 +96,13 @@ ipcMain.handle('export-video', async (event, data) => {
 
     let totalDuration = targetDuration || 3;
     if (audioPath) {
-        const audioLen = await getAudioDuration(audioPath.replace('file://', ''));
+        const decodedPath = decodeURIComponent(audioPath.replace('file://', '').replace(/^\/([a-zA-Z]:)/, '$1'));
+        const audioLen = await getAudioDuration(decodedPath);
         if (audioLen > 0) totalDuration = audioLen;
     }
 
     console.log('Exporting video to:', outputPath);
-    console.log('Target Duration:', totalDuration, 'seconds');
+    console.log('Final Total Duration:', totalDuration, 'seconds');
 
     return new Promise((resolve, reject) => {
         let command = ffmpeg();
@@ -116,11 +117,15 @@ ipcMain.handle('export-video', async (event, data) => {
                 const startTime = index * 3;
                 if (startTime >= totalDuration) return;
 
-                // Path cleanup for Windows
-                const cleanPath = slide.path.replace('file://', '').replace(/^\/([a-zA-Z]:)/, '$1');
+                // Path cleanup for Windows: Remove file://, handle URI encoding, and fix drive letter
+                const rawPath = slide.path.replace('file://', '').replace(/^\/([a-zA-Z]:)/, '$1');
+                const cleanPath = decodeURIComponent(rawPath);
+
                 if (fs.existsSync(cleanPath)) {
                     const isLast = (index === slides.length - 1);
                     const slideDuration = Math.max(0.1, isLast ? (totalDuration - startTime) : 3);
+
+                    console.log(`[Slide ${index}] Path: ${cleanPath} | Duration: ${slideDuration}`);
 
                     if (slideDuration > 0) {
                         // Crucial: Set -framerate BEFORE input for loop
@@ -139,7 +144,7 @@ ipcMain.handle('export-video', async (event, data) => {
 
             // 2. Add Audio
             if (audioPath) {
-                const cleanAudioPath = audioPath.replace('file://', '').replace(/^\/([a-zA-Z]:)/, '$1');
+                const cleanAudioPath = decodeURIComponent(audioPath.replace('file://', '').replace(/^\/([a-zA-Z]:)/, '$1'));
                 command = command.input(cleanAudioPath);
             }
 
@@ -209,10 +214,10 @@ ipcMain.handle('export-video', async (event, data) => {
 
                 const escapedTitle = wrappedTitle
                     .replace(/\\/g, '\\\\')
-                    .replace(/'/g, "'\\''")
+                    .replace(/'/g, "'\\\\\\''") // Double-escape single quotes for FFmpeg filter
                     .replace(/:/g, '\\:')
-                    .replace(/,/g, '\\,')
-                    .replace(/\n/g, '\r');
+                    .replace(/,/g, '\\,');
+                // Removed .replace(/\n/g, '\r') as it's non-standard and causes issues
 
                 const fontPath = 'C\\:/Windows/Fonts/malgun.ttf';
                 const position = data.titlePosition || 'bottom';
@@ -250,12 +255,14 @@ ipcMain.handle('export-video', async (event, data) => {
             }
 
             if (effectiveSubPath) {
-                const cleanSubPath = effectiveSubPath.replace('file://', '')
-                    .replace(/^\/([a-zA-Z]:)/, '$1')
+                // Remove file://, handle URI encoding, fix drive letter, and handle slashes/quotes for FFmpeg filter
+                const cleanSubPath = decodeURIComponent(effectiveSubPath.replace('file://', '')
+                    .replace(/^\/([a-zA-Z]:)/, '$1'))
                     .replace(/\\/g, '/')
-                    .replace(/:/g, '\\:');
+                    .replace(/:/g, '\\:')
+                    .replace(/'/g, "'\\\\\\''"); // Escape single quotes in path
 
-                filters.push(`[${finalVideoPin}]subtitles='${cleanSubPath}'[vsub]`);
+                filters.push(`[${finalVideoPin}]subtitles=filename='${cleanSubPath}'[vsub]`);
                 finalVideoPin = 'vsub';
             }
 
@@ -277,13 +284,19 @@ ipcMain.handle('export-video', async (event, data) => {
                 .outputOptions([
                     '-pix_fmt', 'yuv420p',
                     '-t', totalDuration.toString(), // CRITICAL: Stop exactly at audio end
-                    '-shortest',
                     '-r', '25' // Explicit output frame rate
                 ])
                 .on('start', (cmd) => console.log('FFmpeg started:', cmd))
                 .on('progress', (progress) => {
-                    const percent = (progress.percent) || (progress.frames / (totalDuration * 25) * 100);
-                    event.sender.send('export-progress', Math.round(Math.min(percent, 99)));
+                    // Prioritize frame-based progress since progress.percent can be unreliable with complex filters
+                    const expectedTotalFrames = Math.max(1, totalDuration * 25);
+                    const percentFromFrames = (progress.frames / expectedTotalFrames) * 100;
+
+                    // If progress.percent is valid and looks reasonable, we can consider it, 
+                    // but frames/totalFrames is usually more accurate for our loop-based video.
+                    const finalPercent = Math.max(0, Math.min(percentFromFrames || 0, 99));
+
+                    event.sender.send('export-progress', Math.round(finalPercent));
                 })
                 .on('end', () => {
                     console.log('Export finished');
@@ -296,6 +309,7 @@ ipcMain.handle('export-video', async (event, data) => {
                 })
                 .on('error', (err, stdout, stderr) => {
                     console.error('FFmpeg error:', err.message);
+                    console.error('FFmpeg stderr:', stderr); // Log detailed errors
                     // Cleanup temp SRT
                     if (tempSrtPath && fs.existsSync(tempSrtPath)) {
                         fs.unlinkSync(tempSrtPath);
