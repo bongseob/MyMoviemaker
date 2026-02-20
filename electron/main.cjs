@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
+require('dotenv').config();
 const isDev = !app.isPackaged;
 
 function createWindow() {
@@ -38,6 +39,24 @@ app.on('window-all-closed', function () {
 
 const ffmpeg = require('fluent-ffmpeg');
 const fs = require('fs');
+const { google } = require('googleapis');
+const http = require('http');
+const url = require('url');
+
+// Youtube OAuth2 Config
+let oauth2Client = null;
+const TOKEN_PATH = path.join(app.getPath('userData'), 'youtube-token.json');
+
+function saveToken(token) {
+    fs.writeFileSync(TOKEN_PATH, JSON.stringify(token));
+}
+
+function loadToken() {
+    if (fs.existsSync(TOKEN_PATH)) {
+        return JSON.parse(fs.readFileSync(TOKEN_PATH));
+    }
+    return null;
+}
 
 // Fix for FFmpeg in ASAR
 let ffmpegPath = require('ffmpeg-static');
@@ -321,5 +340,89 @@ ipcMain.handle('export-video', async (event, data) => {
             console.error('Setup error:', e);
             reject(e);
         }
+    });
+});
+
+ipcMain.handle('youtube-setup-auth', async (event, { clientId, clientSecret } = {}) => {
+    const finalClientId = clientId || process.env.YOUTUBE_CLIENT_ID;
+    const finalClientSecret = clientSecret || process.env.YOUTUBE_CLIENT_SECRET;
+
+    if (!finalClientId || !finalClientSecret) {
+        return { isAuthenticated: false, error: 'Missing Client ID or Secret' };
+    }
+
+    oauth2Client = new google.auth.OAuth2(
+        finalClientId,
+        finalClientSecret,
+        'http://localhost:3000/callback'
+    );
+    const token = loadToken();
+    if (token) {
+        oauth2Client.setCredentials(token);
+        return { isAuthenticated: true };
+    }
+    return { isAuthenticated: false };
+});
+
+ipcMain.handle('youtube-login', async (event) => {
+    if (!oauth2Client) throw new Error('OAuth2 Client not initialized. Call setup-auth first.');
+
+    const authUrl = oauth2Client.generateAuthUrl({
+        access_type: 'offline',
+        scope: ['https://www.googleapis.com/auth/youtube.upload'],
+        prompt: 'consent'
+    });
+
+    const { shell } = require('electron');
+    shell.openExternal(authUrl);
+
+    return new Promise((resolve, reject) => {
+        const server = http.createServer(async (req, res) => {
+            try {
+                if (req.url.indexOf('/callback') > -1) {
+                    const qs = new url.URL(req.url, 'http://localhost:3000').searchParams;
+                    const code = qs.get('code');
+                    res.end('Authentication successful! You can close this window.');
+                    server.close();
+
+                    const { tokens } = await oauth2Client.getToken(code);
+                    oauth2Client.setCredentials(tokens);
+                    saveToken(tokens);
+                    resolve({ success: true });
+                }
+            } catch (e) {
+                reject(e);
+            }
+        });
+
+        server.listen(3000);
+    });
+});
+
+ipcMain.handle('youtube-upload', async (event, { videoPath, title, description, privacyStatus }) => {
+    if (!oauth2Client) throw new Error('Not authenticated');
+
+    const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+    const fileSize = fs.statSync(videoPath).size;
+
+    return new Promise((resolve, reject) => {
+        youtube.videos.insert({
+            part: 'snippet,status',
+            requestBody: {
+                snippet: { title, description },
+                status: { privacyStatus }
+            },
+            media: {
+                body: fs.createReadStream(videoPath)
+            }
+        }, {
+            onUploadProgress: (evt) => {
+                const progress = Math.round((evt.bytesRead / fileSize) * 100);
+                event.sender.send('youtube-upload-progress', progress);
+            }
+        }, (err, res) => {
+            if (err) reject(err);
+            else resolve(res.data);
+        });
     });
 });

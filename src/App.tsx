@@ -13,7 +13,9 @@ import {
   CheckCircle2,
   UploadCloud,
   X,
-  Minus
+  Minus,
+  Youtube,
+  ExternalLink
 } from 'lucide-react';
 
 interface Project {
@@ -32,10 +34,22 @@ export default function App() {
   const [project, setProject] = useState<Project | null>(null);
   const [slides, setSlides] = useState<Slide[]>([]);
   const [audioPath, setAudioPath] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'images' | 'audio' | 'subtitles'>('images');
+  const [activeTab, setActiveTab] = useState<'images' | 'audio' | 'subtitles' | 'youtube'>('images');
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportSuccess, setExportSuccess] = useState(false);
+
+  // YouTube States
+  const [ytClientId, setYtClientId] = useState('');
+  const [ytClientSecret, setYtClientSecret] = useState('');
+  const [isYtAuthenticated, setIsYtAuthenticated] = useState(false);
+  const [ytVideoPath, setYtVideoPath] = useState<string | null>(null);
+  const [ytTitle, setYtTitle] = useState('');
+  const [ytDescription, setYtDescription] = useState('');
+  const [ytPrivacy, setYtPrivacy] = useState<'public' | 'private' | 'unlisted'>('private');
+  const [isYtUploading, setIsYtUploading] = useState(false);
+  const [ytUploadProgress, setYtUploadProgress] = useState(0);
+  const [ytUploadSuccess, setYtUploadSuccess] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [titleText, setTitleText] = useState('');
   const [titlePosition, setTitlePosition] = useState<'top' | 'center' | 'bottom'>('center');
@@ -47,6 +61,9 @@ export default function App() {
     if ((window as any).electron) {
       (window as any).electron.onProgress((percent: number) => {
         setExportProgress(Math.round(percent || 0));
+      });
+      (window as any).electron.onYoutubeUploadProgress((percent: number) => {
+        setYtUploadProgress(percent);
       });
     }
   }, []);
@@ -136,9 +153,15 @@ export default function App() {
     const { electron } = window as any;
     if (!electron) return;
 
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const defaultFileName = `${yyyy}${mm}${dd}.mp4`;
+
     const result = await electron.selectSavePath({
       title: 'Save Video',
-      defaultPath: 'output.mp4',
+      defaultPath: defaultFileName,
       buttonLabel: 'Export',
       properties: ['createDirectory', 'showOverwriteConfirmation'],
       filters: [{ name: 'Video', extensions: ['mp4'] }]
@@ -221,6 +244,78 @@ export default function App() {
 
     if (!result.canceled && result.filePaths.length > 0) {
       setSubtitlePath(result.filePaths[0]);
+    }
+  };
+
+  const handleSelectYtVideo = async () => {
+    if (!(window as any).electron) return;
+    const result = await (window as any).electron.selectFiles({
+      properties: ['openFile'],
+      filters: [{ name: 'Videos', extensions: ['mp4', 'mov', 'avi', 'mkv'] }]
+    });
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      setYtVideoPath(result.filePaths[0]);
+      if (!ytTitle) {
+        const fileName = result.filePaths[0].split(/[\\/]/).pop()?.replace(/\.[^/.]+$/, "") || "";
+        setYtTitle(fileName);
+      }
+    }
+  };
+
+  const handleYtSetup = async () => {
+    // UI 입력값이 있으면 파라미터로 전달, 없으면 undefined 전달하여 .env 값을 쓰도록 함
+    const result = await (window as any).electron.youtubeSetupAuth({
+      clientId: ytClientId || undefined,
+      clientSecret: ytClientSecret || undefined
+    });
+
+    if (result.error && !result.isAuthenticated) {
+      alert('설정된 인증 정보가 없습니다. Client ID와 Secret을 입력하거나 .env 파일을 확인해 주세요.');
+      return;
+    }
+
+    setIsYtAuthenticated(result.isAuthenticated);
+    if (!result.isAuthenticated) {
+      const loginResult = await (window as any).electron.youtubeLogin();
+      if (loginResult.success) {
+        setIsYtAuthenticated(true);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const checkYtAuth = async () => {
+      if ((window as any).electron) {
+        // 파라미터 없이 호출하여 .env 설정이 있는지 확인
+        const result = await (window as any).electron.youtubeSetupAuth();
+        setIsYtAuthenticated(result.isAuthenticated);
+      }
+    };
+    checkYtAuth();
+  }, []);
+
+  const handleYtUpload = async () => {
+    if (!ytVideoPath || !ytTitle) {
+      alert('Video file and Title are required.');
+      return;
+    }
+    setIsYtUploading(true);
+    setYtUploadProgress(0);
+    setYtUploadSuccess(false);
+    try {
+      await (window as any).electron.youtubeUpload({
+        videoPath: ytVideoPath,
+        title: ytTitle,
+        description: ytDescription,
+        privacyStatus: ytPrivacy
+      });
+      setYtUploadSuccess(true);
+    } catch (err: any) {
+      console.error('Upload failed:', err);
+      alert(`Upload failed: ${err.message}`);
+    } finally {
+      setIsYtUploading(false);
     }
   };
 
@@ -342,9 +437,16 @@ export default function App() {
             >
               <Settings className="w-5 h-5 text-teal-400" />
             </button>
+            <button
+              onClick={() => setActiveTab('youtube')}
+              className={`flex-1 p-4 transition-colors flex justify-center ${activeTab === 'youtube' ? 'border-b-2 border-red-500 bg-red-500/10' : 'hover:bg-white/5'}`}
+            >
+              <Youtube className="w-5 h-5 text-red-500" />
+            </button>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {/* ... other tabs ... */}
             {activeTab === 'images' && (
               <>
                 <button
@@ -502,6 +604,135 @@ export default function App() {
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+            {activeTab === 'youtube' && (
+              <div className="space-y-6">
+                {!isYtAuthenticated ? (
+                  <div className="space-y-4">
+                    <p className="text-xs text-slate-400">유튜브 업로드를 위해 Google Cloud Console에서 발급받은 클라이언트 정보가 필요합니다.</p>
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-slate-500 uppercase tracking-widest">Client ID</label>
+                      <input
+                        type="text"
+                        value={ytClientId}
+                        onChange={(e) => setYtClientId(e.target.value)}
+                        className="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-xs focus:border-red-500 outline-none text-white"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-slate-500 uppercase tracking-widest">Client Secret</label>
+                      <input
+                        type="password"
+                        value={ytClientSecret}
+                        onChange={(e) => setYtClientSecret(e.target.value)}
+                        className="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-xs focus:border-red-500 outline-none text-white"
+                      />
+                    </div>
+                    <button
+                      onClick={handleYtSetup}
+                      className="w-full bg-red-600 hover:bg-red-700 text-white p-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      구글 로그인 및 연동
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> 인증됨
+                      </span>
+                      <button onClick={() => setIsYtAuthenticated(false)} className="text-[10px] text-slate-500 hover:text-white underline">계정 변경</button>
+                    </div>
+
+                    <button
+                      onClick={handleSelectYtVideo}
+                      className="w-full glass-card p-6 border-dashed border-2 border-white/10 flex flex-col items-center gap-3 hover:bg-white/10 transition-colors"
+                    >
+                      <div className="w-10 h-10 bg-red-500/20 rounded-full flex items-center justify-center">
+                        <ImageIcon className="w-6 h-6 text-red-500" />
+                      </div>
+                      <span className="text-sm font-medium">{ytVideoPath ? '비디오 변경' : '업로드할 영상 선택'}</span>
+                    </button>
+
+                    {ytVideoPath && (
+                      <div className="glass-card p-3 flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-medium truncate">{ytVideoPath.split(/[\\/]/).pop()}</p>
+                        </div>
+                        <button onClick={() => setYtVideoPath(null)} className="text-slate-500 hover:text-red-400">
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-slate-500 uppercase tracking-widest">제목</label>
+                      <input
+                        type="text"
+                        value={ytTitle}
+                        onChange={(e) => setYtTitle(e.target.value)}
+                        placeholder="영상의 제목을 입력하세요"
+                        className="w-full bg-black/40 border border-white/10 rounded-lg p-3 text-sm focus:border-red-500 outline-none transition-all text-white"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-slate-500 uppercase tracking-widest">설명</label>
+                      <textarea
+                        value={ytDescription}
+                        onChange={(e) => setYtDescription(e.target.value)}
+                        placeholder="영상에 대한 설명을 입력하세요"
+                        className="w-full h-24 bg-black/40 border border-white/10 rounded-lg p-3 text-sm focus:border-red-500 outline-none transition-all text-white resize-none"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-slate-500 uppercase tracking-widest">공개 여부</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(['public', 'private', 'unlisted'] as const).map((status) => (
+                          <button
+                            key={status}
+                            onClick={() => setYtPrivacy(status)}
+                            className={`py-2 text-[10px] font-bold uppercase rounded-md border transition-all ${ytPrivacy === status
+                              ? 'bg-red-500/20 border-red-500 text-red-400'
+                              : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10'
+                              }`}
+                          >
+                            {status}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={handleYtUpload}
+                      disabled={isYtUploading || !ytVideoPath || !ytTitle}
+                      className={`w-full p-4 rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-2 ${isYtUploading ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 text-white'
+                        }`}
+                    >
+                      {isYtUploading ? (
+                        <>
+                          <div className="w-full bg-black/40 rounded-full h-1 mt-1 overflow-hidden">
+                            <div className="bg-red-500 h-full transition-all duration-300" style={{ width: `${ytUploadProgress}%` }} />
+                          </div>
+                          <span className="text-xs uppercase tracking-widest">UPLOADING {ytUploadProgress}%</span>
+                        </>
+                      ) : (
+                        <>
+                          <UploadCloud className="w-5 h-5" />
+                          <span>YOUTUBE UPLOAD</span>
+                        </>
+                      )}
+                    </button>
+                    {ytUploadSuccess && (
+                      <p className="text-xs text-emerald-400 text-center font-medium animate-bounce mt-2">
+                        업로드가 완료되었습니다!
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
