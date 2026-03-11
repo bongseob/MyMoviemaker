@@ -64,9 +64,8 @@ let ffprobePath = require('ffprobe-static').path;
 
 if (!isDev) {
     // electron-builder moves unpacked binaries to 'app.asar.unpacked'
-    // Use a more robust replacement that is case-insensitive and handles various path formats
-    const unpackedFfmpeg = ffmpegPath.replace(/[\\/]app\.asar[\\/]/i, '/app.asar.unpacked/');
-    const unpackedFfprobe = ffprobePath.replace(/[\\/]app\.asar[\\/]/i, '/app.asar.unpacked/');
+    const unpackedFfmpeg = ffmpegPath.replace('app.asar', 'app.asar.unpacked');
+    const unpackedFfprobe = ffprobePath.replace('app.asar', 'app.asar.unpacked');
 
     if (fs.existsSync(unpackedFfmpeg)) {
         ffmpegPath = unpackedFfmpeg;
