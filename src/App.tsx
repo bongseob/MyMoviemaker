@@ -186,9 +186,15 @@ export default function App() {
         subtitleTextContent: subtitleTextContent
       });
       setExportSuccess(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Export failed:', err);
-      alert('Export failed. Make sure FFmpeg is installed.');
+      const errorMessage = err.message || err.toString();
+
+      if (errorMessage.includes('Permission denied')) {
+        alert('비디오 저장 실패: 해당 파일 이름으로 덮어쓸 권한이 없거나, 파일이 현재 사용 중입니다.\n저장 시 "다른 이름"으로 다시 시도해주세요.');
+      } else {
+        alert(`Export failed: ${errorMessage}\nMake sure FFmpeg is installed.`);
+      }
     } finally {
       setIsExporting(false);
     }

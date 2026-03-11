@@ -62,6 +62,8 @@ function loadToken() {
 let ffmpegPath = require('ffmpeg-static');
 let ffprobePath = require('ffprobe-static').path;
 
+// In Dev mode, ffmpeg-static might return a path ending in `app.asar.unpacked` if it's erroneously cached, 
+// but generally it returns the direct node_modules path.
 if (!isDev) {
     // electron-builder moves unpacked binaries to 'app.asar.unpacked'
     const unpackedFfmpeg = ffmpegPath.replace('app.asar', 'app.asar.unpacked');
@@ -80,11 +82,16 @@ if (!isDev) {
     }
 }
 
-console.log('Resolved ffmpegPath:', ffmpegPath);
-console.log('Resolved ffprobePath:', ffprobePath);
-
+// Set the exact path for fluent-ffmpeg
 ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath);
+
+console.log('--- FFmpeg Path Diagnostic ---');
+console.log('Is Dev:', isDev);
+console.log('App Path:', app.getAppPath());
+console.log('Resolved ffmpegPath:', ffmpegPath, 'Exists:', fs.existsSync(ffmpegPath));
+console.log('Resolved ffprobePath:', ffprobePath, 'Exists:', fs.existsSync(ffprobePath));
+console.log('------------------------------');
 
 // Helper to get audio duration
 function getAudioDuration(filePath) {
@@ -137,6 +144,7 @@ ipcMain.handle('export-video', async (event, data) => {
 
     console.log('Exporting video to:', outputPath);
     console.log('Final Total Duration:', totalDuration, 'seconds');
+    console.log('Exporting using ffmpegPath:', ffmpegPath, 'ffprobePath:', ffprobePath);
 
     return new Promise((resolve, reject) => {
         let command = ffmpeg();
