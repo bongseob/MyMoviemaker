@@ -113,6 +113,7 @@ export default function App() {
 
     const imagePaths = filePaths.filter(p => /\.(jpg|jpeg|png|webp|gif)$/i.test(p));
     const audioPaths = filePaths.filter(p => /\.(mp3|wav|m4a|ogg)$/i.test(p));
+    const subtitlePaths = filePaths.filter(p => /\.srt$/i.test(p));
 
     if (imagePaths.length > 0) {
       const newSlides = imagePaths.map((path: string, index: number) => ({
@@ -128,6 +129,11 @@ export default function App() {
     if (audioPaths.length > 0) {
       setAudioPath(audioPaths[0]);
       setActiveTab('audio');
+    }
+
+    if (subtitlePaths.length > 0) {
+      setSubtitlePath(subtitlePaths[0]);
+      setActiveTab('subtitles');
     }
   }, [project]);
 
@@ -382,14 +388,21 @@ export default function App() {
         <div className="absolute inset-0 z-50 bg-primary/20 backdrop-blur-md border-4 border-dashed border-primary m-4 rounded-3xl flex flex-col items-center justify-center animate-in fade-in duration-300 pointer-events-none">
           <UploadCloud className="w-24 h-24 text-primary animate-bounce mb-4" />
           <h2 className="text-3xl font-bold text-white uppercase tracking-tighter">Drop files to add</h2>
-          <p className="text-primary-foreground/70 font-medium">Images & Audio supported</p>
+          <p className="text-primary-foreground/70 font-medium">Images, Audio & Subtitles supported</p>
         </div>
       )}
 
       <header className="h-12 border-b border-white/10 flex items-center justify-between px-6 drag-region">
         <div className="flex items-center gap-3">
           <Layers className="w-5 h-5 text-primary" />
-          <span className="font-semibold text-sm uppercase tracking-wider">{project.name} - {project.aspectRatio}</span>
+          <span className="font-semibold text-sm uppercase tracking-wider mr-1">{project.name}</span>
+          <button
+            onClick={() => setProject({ ...project, aspectRatio: project.aspectRatio === '16:9' ? '9:16' : '16:9' })}
+            className="no-drag text-xs font-bold px-2 py-1 rounded bg-white/10 hover:bg-white/20 transition-colors"
+            title="비율 변경"
+          >
+            {project.aspectRatio}
+          </button>
         </div>
         <div className="flex items-center gap-2 no-drag">
           <button className="text-slate-400 hover:text-white transition-colors p-1">
