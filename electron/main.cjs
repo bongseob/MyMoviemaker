@@ -648,11 +648,10 @@ ipcMain.handle('publish-article', async (event, articleData) => {
             await page.waitForSelector('.cke_pasteframe', { state: 'visible' });
             
             // iframe 내의 body 요소에 기사 내용만 붙여넣기 (요약 기사 제외)
-            // 엔터(줄바꿈) 값이 소실되지 않도록 innerText를 직접 할당하여 브라우저가 자동 처리하게 함
+            // 엔터(줄바꿈) 값이 완벽하게 유지되도록 Playwright의 insertText(실제 붙여넣기 에뮬레이션) 사용
             const pasteFrame = page.frameLocator('.cke_pasteframe');
-            await pasteFrame.locator('body').evaluate((body, content) => {
-                body.innerText = content;
-            }, articleData.content);
+            await pasteFrame.locator('body').focus();
+            await page.keyboard.insertText(articleData.content);
             
             // "확인" 버튼 클릭
             try {
@@ -688,6 +687,183 @@ ipcMain.handle('publish-article', async (event, articleData) => {
         return { success: true, message: '어드민 페이지에 기사가 성공적으로 자동 등록되었습니다.' };
     } catch (error) {
         console.error('Error publishing article:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+// Suno AI Song Generation
+ipcMain.handle('generate-suno-song', async (event, articleData) => {
+    const fs = require('fs');
+    const { chromium } = require('playwright-extra');
+    const stealth = require('puppeteer-extra-plugin-stealth')();
+    chromium.use(stealth);
+
+    const userDataDir = path.join(app.getPath('userData'), 'suno-playwright-session');
+    
+    try {
+        event.sender.send('suno-status', '브라우저를 엽니다... (필요시 로그인해주세요)');
+        
+        // Launch persistent context to keep the session alive across runs
+        const context = await chromium.launchPersistentContext(userDataDir, {
+            headless: false, // Must be visible for initial login or Captcha
+            viewport: { width: 1280, height: 800 }
+        });
+        const page = context.pages()[0] || await context.newPage();
+        
+        await page.goto('https://suno.com/');
+        
+        event.sender.send('suno-status', 'Suno AI 접속 중... 수동으로 로그인을 완료해주세요.');
+        
+        // Wait until user is logged in and we can see the "Create" menu on the left
+        try {
+            await page.waitForSelector('a[href*="/create"]', { timeout: 300000 }); // 5 minutes for manual login
+        } catch (e) {
+            return { success: false, error: '시간 초과: 로그인이 완료되지 않았거나 페이지 로딩에 실패했습니다.' };
+        }
+
+        event.sender.send('suno-status', '로그인 확인 완료! 좌측 Create 메뉴를 선택합니다.');
+        
+        // Click Create menu on the left
+        await page.click('a[href*="/create"]');
+        await page.waitForTimeout(2000);
+
+        event.sender.send('suno-status', 'Custom/Advanced 모드를 활성화합니다.');
+        
+        // Activate Advanced Mode (formerly Custom Mode)
+        // User said: "Custom Mode" (직접 가사 입력 모드) 활성화
+        const customBtn = page.locator('button:has-text("Custom"), button:has-text("Advanced"), label:has-text("Custom"), label:has-text("Advanced")').first();
+        if (await customBtn.count() > 0) {
+            // Check if it's already active by looking for lyrics textarea
+            const lyricsTextarea = page.locator('[data-testid="lyrics-input-textarea"], textarea[placeholder*="lyrics" i]').first();
+            if (await lyricsTextarea.count() === 0) {
+                await customBtn.click();
+                await page.waitForTimeout(1000);
+            }
+        }
+
+        event.sender.send('suno-status', '가사와 스타일, 제목을 입력합니다...');
+        
+        // 0. Close Cookie Banner if exists
+        try {
+            const cookieBtn = page.locator('button:has-text("Accept All Cookies"), button:has-text("동의"), button#onetrust-accept-btn-handler').first();
+            if (await cookieBtn.isVisible()) {
+                await cookieBtn.click();
+                await page.waitForTimeout(500);
+            }
+        } catch (e) {}
+
+        // 1. Fill Lyrics (summary) - Use insertText to preserve newlines perfectly
+        const summaryText = articleData.summary || '';
+        const lyricsInput = page.locator('[data-testid*="lyrics-wrapper" i] textarea, [data-testid="lyrics-input-textarea"], textarea[placeholder*="lyrics" i], textarea[placeholder*="가사" i]').first();
+        await lyricsInput.scrollIntoViewIfNeeded();
+        await lyricsInput.focus();
+        await page.keyboard.insertText(summaryText);
+        
+        // 2. Fill Style
+        const styleInput = page.locator('[data-testid*="styles-wrapper" i] textarea, [data-testid="tag-input-textarea"], [placeholder="Style of Music" i], [placeholder="음악 스타일" i], textarea[placeholder*="인트로" i]').first();
+        if (await styleInput.count() > 0) {
+            await styleInput.scrollIntoViewIfNeeded();
+            await styleInput.fill('아주 빠른 한국의 랩');
+        } else {
+            // Last resort: find by location or aria-label
+            await page.locator('textarea[aria-label*="Style" i], textarea[aria-label*="스타일" i]').first().fill('아주 빠른 한국의 랩');
+        }
+
+        // 3. Fill Title
+        const titleInput = page.locator('[data-testid*="title-wrapper" i] input, [data-testid="title-input-textarea"], [placeholder*="title" i], [placeholder*="제목" i]').first();
+        if (articleData.title && await titleInput.count() > 0) {
+            try {
+                await titleInput.scrollIntoViewIfNeeded();
+                if (await titleInput.isVisible()) {
+                    await titleInput.fill(articleData.title);
+                } else {
+                    // If still not visible (e.g. inside a collapsed section), try to force evaluate
+                    await titleInput.evaluate((el, val) => {
+                        el.value = val;
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                    }, articleData.title);
+                }
+            } catch (err) {
+                console.log('Title fill error, skipping...', err.message);
+            }
+        }
+
+        event.sender.send('suno-status', '노래 생성을 시작합니다! (약 2분 소요)');
+        
+        // Click Create button
+        await page.click('button:has-text("Create")');
+
+        // Wait for generation and download
+        // We look for the newly created track. Usually it's at the top of the list.
+        event.sender.send('suno-status', '곡 생성 완료 대기 중... (취소하지 마세요)');
+
+        // Wait for the track to be ready (loader disappears or play button appears)
+        // This is a bit tricky, so we'll wait for a reasonable amount of time or look for the first menu button
+        await page.waitForTimeout(60000); // Wait at least 1 minute for generation to start showing progress
+        
+        // Loop to find and click download when ready
+        let downloaded = false;
+        const startTime = Date.now();
+        const timeout = 300000; // 5 minutes max
+
+        while (Date.now() - startTime < timeout) {
+            try {
+                // Find the first track's menu button (three dots)
+                // Use a more specific selector based on the workspace view
+                const menuButton = page.locator('button[aria-haspopup="menu"], button:has([data-icon="ellipsis"]), button:has-text("..."), [data-testid="song-row-menu-button"]').first();
+                
+                if (await menuButton.isVisible()) {
+                    await menuButton.click({ force: true });
+                    await page.waitForTimeout(1000);
+                    
+                    // Click Download in the menu
+                    // Use text match for "Download"
+                    const downloadMenu = page.locator('div[role="menuitem"]:has-text("Download"), button:has-text("Download"), [data-testid="song-menu-download"]').first();
+                    if (await downloadMenu.isVisible()) {
+                        await downloadMenu.hover();
+                        await page.waitForTimeout(500);
+                        
+                        // Click MP3 Audio (User's screenshot shows exactly "MP3 Audio")
+                        const audioButton = page.locator('div[role="menuitem"]:has-text("MP3 Audio"), button:has-text("MP3 Audio"), div[role="menuitem"]:has-text("Audio")').first();
+                        if (await audioButton.isVisible()) {
+                            event.sender.send('suno-status', 'MP3 다운로드를 시작합니다...');
+                            
+                            // Setup download listener
+                            const downloadPromise = page.waitForEvent('download');
+                            await audioButton.click();
+                            const download = await downloadPromise;
+                            
+                            // Save to outputs/suno
+                            const sunoDir = path.join(__dirname, 'outputs', 'suno');
+                            if (!fs.existsSync(sunoDir)) fs.mkdirSync(sunoDir, { recursive: true });
+                            
+                            const fileName = `${Date.now()}_suno.mp3`;
+                            const filePath = path.join(sunoDir, fileName);
+                            await download.saveAs(filePath);
+                            
+                            downloaded = true;
+                            event.sender.send('suno-status', `다운로드 완료: ${fileName}`);
+                            break;
+                        }
+                    }
+                    // If download button not found yet, close menu and retry
+                    await page.keyboard.press('Escape');
+                }
+            } catch (err) {
+                console.log('Polling Suno download...', err.message);
+            }
+            await page.waitForTimeout(10000); // Poll every 10 seconds
+            event.sender.send('suno-status', `곡 생성 확인 중... (${Math.floor((Date.now() - startTime)/1000)}초 경과)`);
+        }
+
+        if (!downloaded) {
+            return { success: false, error: '곡 생성 대기 시간이 초과되었거나 다운로드 버튼을 찾을 수 없습니다. 브라우저에서 직접 확인해주세요.' };
+        }
+
+        return { success: true, message: 'Suno AI 곡 생성 및 MP3 다운로드가 완료되었습니다.' };
+    } catch (error) {
+        console.error('Error generating Suno song:', error);
         return { success: false, error: error.message };
     }
 });

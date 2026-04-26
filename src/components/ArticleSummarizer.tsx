@@ -19,13 +19,22 @@ export default function ArticleSummarizer() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishStatus, setPublishStatus] = useState<string | null>(null);
 
-  // 컴포넌트 마운트 시 publish-status 이벤트 리스너 등록
+  const [isGeneratingSuno, setIsGeneratingSuno] = useState(false);
+  const [sunoStatus, setSunoStatus] = useState<string | null>(null);
+
+  // 컴포넌트 마운트 시 IPC 이벤트 리스너 등록
   React.useEffect(() => {
     (window as any).electron.onPublishStatus((status: string) => {
       setPublishStatus(status);
     });
+    
+    (window as any).electron.onSunoStatus((status: string) => {
+      setSunoStatus(status);
+    });
+    
     return () => {
       (window as any).electron.removePublishStatusListener();
+      (window as any).electron.removeSunoStatusListener();
     };
   }, []);
 
@@ -76,6 +85,29 @@ export default function ArticleSummarizer() {
       setPublishStatus(null);
     } finally {
       setIsPublishing(false);
+    }
+  };
+
+  const handleGenerateSuno = async () => {
+    if (!result) return;
+    
+    setIsGeneratingSuno(true);
+    setError(null);
+    setSunoStatus('초기화 중...');
+
+    try {
+      const response = await (window as any).electron.generateSunoSong(result);
+      if (response.success) {
+        setSunoStatus(`성공: ${response.message}`);
+      } else {
+        setError(response.error || 'Suno AI 생성 중 오류가 발생했습니다.');
+        setSunoStatus(null);
+      }
+    } catch (err: any) {
+      setError(err.message || '알 수 없는 오류가 발생했습니다.');
+      setSunoStatus(null);
+    } finally {
+      setIsGeneratingSuno(false);
     }
   };
 
@@ -145,12 +177,12 @@ export default function ArticleSummarizer() {
               <pre>{JSON.stringify(result, null, 2)}</pre>
             </div>
 
-            <div className="pt-4 border-t border-white/10">
+            <div className="pt-4 border-t border-white/10 space-y-3">
               <button
                 onClick={handlePublish}
-                disabled={isPublishing}
+                disabled={isPublishing || isGeneratingSuno}
                 className={`w-full py-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
-                  isPublishing
+                  isPublishing || isGeneratingSuno
                     ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
                     : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                 }`}
@@ -168,6 +200,30 @@ export default function ArticleSummarizer() {
               </button>
               {publishStatus && !isPublishing && !error && (
                 <p className="mt-2 text-sm text-center text-emerald-400">{publishStatus}</p>
+              )}
+
+              <button
+                onClick={handleGenerateSuno}
+                disabled={isPublishing || isGeneratingSuno}
+                className={`w-full py-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
+                  isPublishing || isGeneratingSuno
+                    ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                    : 'bg-purple-600 hover:bg-purple-500 text-white'
+                }`}
+              >
+                {isGeneratingSuno ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>{sunoStatus || 'Suno AI 생성 진행 중...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Suno AI 노래 생성하기</span>
+                  </>
+                )}
+              </button>
+              {sunoStatus && !isGeneratingSuno && !error && (
+                <p className="mt-2 text-sm text-center text-purple-400">{sunoStatus}</p>
               )}
             </div>
           </div>
