@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import ArticleSummarizer from './components/ArticleSummarizer';
 import {
   Plus,
   Settings,
@@ -35,6 +36,7 @@ export default function App() {
   const [slides, setSlides] = useState<Slide[]>([]);
   const [audioPath, setAudioPath] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'images' | 'audio' | 'subtitles' | 'youtube'>('images');
+  const [mainView, setMainView] = useState<'moviemaker' | 'articles'>('moviemaker');
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportSuccess, setExportSuccess] = useState(false);
@@ -53,7 +55,8 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [titleText, setTitleText] = useState('');
   const [titlePosition, setTitlePosition] = useState<'top' | 'center' | 'bottom'>('center');
-  const [targetDuration, setTargetDuration] = useState(3);
+  const [targetDuration, setTargetDuration] = useState(15);
+  const [imageDuration, setImageDuration] = useState(5);
   const [subtitlePath, setSubtitlePath] = useState<string | null>(null);
   const [subtitleTextContent, setSubtitleTextContent] = useState('');
 
@@ -118,9 +121,9 @@ export default function App() {
     if (imagePaths.length > 0) {
       const newSlides = imagePaths.map((path: string, index: number) => ({
         id: `${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
-        url: path,
+        url: path.startsWith('file://') ? path : `file://${path}`,
         path: path,
-        duration: 3
+        duration: imageDuration
       }));
       setSlides(prev => [...prev, ...newSlides]);
       setActiveTab('images');
@@ -188,6 +191,7 @@ export default function App() {
         titleText: titleText,
         titlePosition: titlePosition,
         targetDuration: targetDuration,
+        imageDuration: imageDuration,
         subtitlePath: subtitlePath,
         subtitleTextContent: subtitleTextContent
       });
@@ -220,9 +224,9 @@ export default function App() {
     if (!result.canceled && result.filePaths.length > 0) {
       const newSlides = result.filePaths.map((path: string, idx: number) => ({
         id: `${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 9)}`,
-        url: path,
+        url: path.startsWith('file://') ? path : `file://${path}`,
         path: path,
-        duration: 3
+        duration: imageDuration
       }));
 
       if (typeof index === 'number') {
@@ -342,9 +346,40 @@ export default function App() {
     }
   };
 
+  if (mainView === 'articles') {
+    return (
+      <div className="h-screen flex flex-col bg-background text-slate-200 overflow-hidden relative">
+        <header className="h-12 border-b border-white/10 flex items-center justify-between px-6 drag-region">
+          <div className="flex items-center gap-6 no-drag">
+            <button onClick={() => setMainView('moviemaker')} className="text-sm font-semibold text-slate-400 hover:text-white transition-colors">동영상 메이커</button>
+            <button onClick={() => setMainView('articles')} className="text-sm font-bold text-primary border-b-2 border-primary h-12 flex items-center">기사 요약</button>
+          </div>
+          <div className="flex items-center gap-2 no-drag">
+            <button onClick={() => (window as any).electron.minimize()} className="text-slate-400 hover:text-white hover:bg-white/5 p-1 rounded transition-all"><Minus className="w-5 h-5" /></button>
+            <button onClick={() => (window as any).electron.close()} className="text-slate-400 hover:text-red-400 hover:bg-red-500/10 p-1 rounded transition-all"><X className="w-5 h-5" /></button>
+          </div>
+        </header>
+        <main className="flex-1 overflow-hidden">
+          <ArticleSummarizer />
+        </main>
+      </div>
+    );
+  }
+
   if (!project) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-background text-white p-8">
+      <div className="h-screen w-full flex flex-col bg-background text-white">
+        <header className="h-12 border-b border-white/10 flex items-center justify-between px-6 drag-region">
+          <div className="flex items-center gap-6 no-drag">
+            <button onClick={() => setMainView('moviemaker')} className="text-sm font-bold text-primary border-b-2 border-primary h-12 flex items-center">동영상 메이커</button>
+            <button onClick={() => setMainView('articles')} className="text-sm font-semibold text-slate-400 hover:text-white transition-colors">기사 요약</button>
+          </div>
+          <div className="flex items-center gap-2 no-drag">
+            <button onClick={() => (window as any).electron.minimize()} className="text-slate-400 hover:text-white hover:bg-white/5 p-1 rounded transition-all"><Minus className="w-5 h-5" /></button>
+            <button onClick={() => (window as any).electron.close()} className="text-slate-400 hover:text-red-400 hover:bg-red-500/10 p-1 rounded transition-all"><X className="w-5 h-5" /></button>
+          </div>
+        </header>
+        <div className="flex-1 flex items-center justify-center p-8">
         <div className="max-w-4xl w-full">
           <header className="mb-12 text-center">
             <h1 className="text-5xl font-bold mb-4 bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent italic">
@@ -378,6 +413,7 @@ export default function App() {
           </div>
         </div>
       </div>
+      </div>
     );
   }
 
@@ -393,16 +429,23 @@ export default function App() {
       )}
 
       <header className="h-12 border-b border-white/10 flex items-center justify-between px-6 drag-region">
-        <div className="flex items-center gap-3">
-          <Layers className="w-5 h-5 text-primary" />
-          <span className="font-semibold text-sm uppercase tracking-wider mr-1">{project.name}</span>
-          <button
-            onClick={() => setProject({ ...project, aspectRatio: project.aspectRatio === '16:9' ? '9:16' : '16:9' })}
-            className="no-drag text-xs font-bold px-2 py-1 rounded bg-white/10 hover:bg-white/20 transition-colors"
-            title="비율 변경"
-          >
-            {project.aspectRatio}
-          </button>
+        <div className="flex items-center gap-6 no-drag">
+          <button onClick={() => setMainView('moviemaker')} className="text-sm font-bold text-primary border-b-2 border-primary h-12 flex items-center">동영상 메이커</button>
+          <button onClick={() => setMainView('articles')} className="text-sm font-semibold text-slate-400 hover:text-white transition-colors">기사 요약</button>
+          
+          <div className="h-4 w-[1px] bg-white/10 mx-2" />
+          
+          <div className="flex items-center gap-3">
+            <Layers className="w-5 h-5 text-primary" />
+            <span className="font-semibold text-sm uppercase tracking-wider mr-1">{project.name}</span>
+            <button
+              onClick={() => setProject({ ...project, aspectRatio: project.aspectRatio === '16:9' ? '9:16' : '16:9' })}
+              className="text-xs font-bold px-2 py-1 rounded bg-white/10 hover:bg-white/20 transition-colors"
+              title="비율 변경"
+            >
+              {project.aspectRatio}
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-2 no-drag">
           <button className="text-slate-400 hover:text-white transition-colors p-1">
@@ -468,6 +511,21 @@ export default function App() {
             {/* ... other tabs ... */}
             {activeTab === 'images' && (
               <>
+                <div className="space-y-2 mb-4">
+                  <label className="text-[10px] text-slate-500 uppercase tracking-widest">각 이미지 표시 시간 (초)</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      min="1"
+                      max="60"
+                      value={imageDuration}
+                      onChange={(e) => setImageDuration(Number(e.target.value))}
+                      className="flex-1 bg-black/40 border border-white/10 rounded-lg p-3 text-sm focus:border-primary outline-none transition-all text-white"
+                    />
+                    <span className="text-sm text-slate-400">sec</span>
+                  </div>
+                </div>
+
                 <button
                   onClick={() => handleAddImages()}
                   className="w-full glass-card p-6 border-dashed border-2 border-white/10 flex flex-col items-center gap-3 hover:bg-white/10 transition-colors"
@@ -496,7 +554,7 @@ export default function App() {
                             <Trash2 className="w-3 h-3" />
                           </button>
                           <div className="absolute bottom-1 left-1 px-1 bg-black/60 rounded text-[10px] text-white">
-                            {slide.duration}s
+                            {imageDuration}s
                           </div>
                         </div>
                       ))}

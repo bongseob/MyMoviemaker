@@ -13,4 +13,13 @@ contextBridge.exposeInMainWorld('electron', {
     youtubeLogin: () => ipcRenderer.invoke('youtube-login'),
     youtubeUpload: (data) => ipcRenderer.invoke('youtube-upload', data),
     onYoutubeUploadProgress: (callback) => ipcRenderer.on('youtube-upload-progress', (event, value) => callback(value)),
+    // Article Summarizer API
+    processArticle: (text) => ipcRenderer.invoke('process-article', text),
+    publishArticle: (articleData) => ipcRenderer.invoke('publish-article', articleData),
+    onPublishStatus: (callback) => {
+        ipcRenderer.on('publish-status', (_event, status) => callback(status));
+    },
+    removePublishStatusListener: () => {
+        ipcRenderer.removeAllListeners('publish-status');
+    }
 });
