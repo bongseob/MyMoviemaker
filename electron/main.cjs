@@ -607,6 +607,9 @@ ipcMain.handle('publish-article', async (event, articleData) => {
         event.sender.send('publish-status', '기사 등록 폼에 내용을 채우고 있습니다...');
 
         // 4. 데이터 입력
+        // 4-0. 1차 섹션 "뉴스" 자동 선택 (값: S1N1)
+        await page.selectOption('#sectionCode', 'S1N1');
+
         // 4-1. 기사 제목
         if (articleData.title) {
             await page.fill('#title', articleData.title);
