@@ -1,6 +1,64 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
+
+function isBrokenPipeError(error) {
+    return error && (error.code === 'EPIPE' || String(error.message || '').includes('EPIPE'));
+}
+
+for (const stream of [process.stdout, process.stderr]) {
+    stream?.on?.('error', (error) => {
+        if (!isBrokenPipeError(error)) {
+            throw error;
+        }
+    });
+}
+
+for (const method of ['log', 'warn', 'error']) {
+    const original = console[method].bind(console);
+    console[method] = (...args) => {
+        try {
+            original(...args);
+        } catch (error) {
+            if (!isBrokenPipeError(error)) {
+                throw error;
+            }
+        }
+    };
+}
+
+process.on('uncaughtException', (error) => {
+    if (isBrokenPipeError(error)) {
+        return;
+    }
+
+    try {
+        console.error('Uncaught exception in main process:', error);
+    } finally {
+        app.quit();
+    }
+});
+
+// 기본 .env 로드 (작업 디렉토리)
 require('dotenv').config();
+
+// 패키징된 상태에서 .env 파일 로드 시도 (Portable 버전 대응)
+if (app.isPackaged) {
+    const possiblePaths = [
+        process.env.PORTABLE_EXECUTABLE_DIR ? path.join(process.env.PORTABLE_EXECUTABLE_DIR, '.env') : null,
+        path.join(path.dirname(process.execPath), '.env'),
+        path.join(app.getAppPath(), '..', '.env')
+    ].filter(Boolean);
+
+    for (const envPath of possiblePaths) {
+        if (fs.existsSync(envPath)) {
+            require('dotenv').config({ path: envPath });
+            console.log('.env loaded from:', envPath);
+        }
+    }
+}
+
+
 const isDev = !app.isPackaged;
 
 function createWindow() {
@@ -38,8 +96,9 @@ app.on('window-all-closed', function () {
 });
 
 const ffmpeg = require('fluent-ffmpeg');
-const fs = require('fs');
+// fs는 상단에서 이미 선언됨
 const { google } = require('googleapis');
+
 const http = require('http');
 const url = require('url');
 
@@ -115,6 +174,16 @@ function formatSRTTime(seconds) {
 // IPC Handlers
 ipcMain.handle('select-files', async (event, options) => {
     const result = await dialog.showOpenDialog(options);
+    return result;
+});
+
+ipcMain.handle('select-srt-file', async (event) => {
+    const parentWindow = BrowserWindow.fromWebContents(event.sender);
+    const result = await dialog.showOpenDialog(parentWindow, {
+        title: 'Select SRT File',
+        properties: ['openFile'],
+        filters: [{ name: 'SubRip Subtitle', extensions: ['srt'] }]
+    });
     return result;
 });
 
@@ -692,6 +761,161 @@ ipcMain.handle('publish-article', async (event, articleData) => {
 });
 
 // Suno AI Song Generation
+let sunoBrowserContext = null;
+
+async function firstVisible(page, locator, timeout = 30000) {
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+        const count = await locator.count();
+        for (let i = 0; i < count; i++) {
+            const candidate = locator.nth(i);
+            try {
+                if (await candidate.isVisible({ timeout: 500 })) {
+                    return candidate;
+                }
+            } catch (e) {
+                // Keep scanning while the page is changing after login/navigation.
+            }
+        }
+        await page.waitForTimeout(250);
+    }
+    throw new Error('Visible Suno input was not found.');
+}
+
+async function hasVisible(page, locator, timeout = 1500) {
+    try {
+        await firstVisible(page, locator, timeout);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function sunoLyricsInputs(page) {
+    return page.locator('[data-testid*="lyrics-wrapper" i] textarea, [data-testid="lyrics-input-textarea"], textarea[placeholder*="lyrics" i], textarea[placeholder*="가사" i]');
+}
+
+function sunoStyleInputs(page) {
+    return page.locator('[data-testid*="styles-wrapper" i] textarea, [data-testid="tag-input-textarea"], [placeholder="Style of Music" i], [placeholder="음악 스타일" i], textarea[placeholder*="인트로" i], textarea[aria-label*="Style" i], textarea[aria-label*="스타일" i]');
+}
+
+async function clickVisibleTextControl(page, pattern) {
+    const clicked = await page.evaluate((source) => {
+        const regex = new RegExp(source, 'i');
+        const selectors = [
+            'button',
+            '[role="button"]',
+            '[role="tab"]',
+            '[role="switch"]',
+            'label',
+            'a'
+        ];
+        const elements = Array.from(document.querySelectorAll(selectors.join(',')));
+        const target = elements.find((element) => {
+            const rect = element.getBoundingClientRect();
+            const style = window.getComputedStyle(element);
+            const text = `${element.textContent || ''} ${element.getAttribute('aria-label') || ''}`;
+            return rect.width > 0
+                && rect.height > 0
+                && style.visibility !== 'hidden'
+                && style.display !== 'none'
+                && regex.test(text);
+        });
+
+        if (!target) return false;
+        target.click();
+        return true;
+    }, pattern.source);
+
+    return clicked;
+}
+
+async function ensureSunoAdvancedMode(page, event) {
+    const lyricsInputs = sunoLyricsInputs(page);
+    const styleInputs = sunoStyleInputs(page);
+
+    if (await hasVisible(page, lyricsInputs, 2000) && await hasVisible(page, styleInputs, 2000)) {
+        return;
+    }
+
+    const advancedControls = page.locator([
+        'button:has-text("Advanced")',
+        '[role="button"]:has-text("Advanced")',
+        '[role="tab"]:has-text("Advanced")',
+        'label:has-text("Advanced")',
+        'button:has-text("Custom")',
+        '[role="button"]:has-text("Custom")',
+        '[role="tab"]:has-text("Custom")',
+        'label:has-text("Custom")',
+        'button:has-text("고급")',
+        '[role="button"]:has-text("고급")',
+        '[role="tab"]:has-text("고급")',
+        'label:has-text("고급")',
+        'button:has-text("커스텀")',
+        '[role="button"]:has-text("커스텀")',
+        '[role="tab"]:has-text("커스텀")',
+        'label:has-text("커스텀")'
+    ].join(', '));
+
+    const count = await advancedControls.count();
+    for (let i = 0; i < count; i++) {
+        const control = advancedControls.nth(i);
+        try {
+            if (!(await control.isVisible({ timeout: 500 }))) continue;
+            await control.scrollIntoViewIfNeeded();
+            await control.click({ force: true });
+            await page.waitForTimeout(1200);
+
+            if (await hasVisible(page, lyricsInputs, 2500) && await hasVisible(page, styleInputs, 2500)) {
+                return;
+            }
+        } catch (e) {
+            console.log('Advanced mode control click failed:', e.message);
+        }
+    }
+
+    const clickedByText = await clickVisibleTextControl(page, /advanced|custom|고급|커스텀|맞춤/);
+    if (clickedByText) {
+        await page.waitForTimeout(1500);
+        if (await hasVisible(page, lyricsInputs, 3000) && await hasVisible(page, styleInputs, 3000)) {
+            return;
+        }
+    }
+
+    event.sender.send('suno-status', 'Advanced 모드를 자동으로 찾지 못했습니다. Suno 창에서 Advanced/Custom 탭을 직접 선택해주세요.');
+    const deadline = Date.now() + 120000;
+    while (Date.now() < deadline) {
+        if (await hasVisible(page, lyricsInputs, 1000) && await hasVisible(page, styleInputs, 1000)) {
+            return;
+        }
+        await page.waitForTimeout(1000);
+    }
+
+    throw new Error('Suno Advanced/Custom mode was not enabled, so lyrics/style inputs were not found.');
+}
+
+async function replaceInputText(page, locator, value) {
+    await locator.scrollIntoViewIfNeeded();
+    await locator.focus();
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+    await page.keyboard.press('Backspace');
+    await page.keyboard.insertText(value);
+}
+
+function stripMarkdownFence(text) {
+    const lines = String(text || '').trim().split(/\r?\n/);
+
+    if (lines.length > 0 && /^```\w*\s*$/.test(lines[0].trim())) {
+        lines.shift();
+    }
+
+    if (lines.length > 0 && /^```\s*$/.test(lines[lines.length - 1].trim())) {
+        lines.pop();
+    }
+
+    return lines.join('\n').trim();
+}
+
 ipcMain.handle('generate-suno-song', async (event, articleData) => {
     const fs = require('fs');
     const { chromium } = require('playwright-extra');
@@ -700,15 +924,52 @@ ipcMain.handle('generate-suno-song', async (event, articleData) => {
 
     const userDataDir = path.join(app.getPath('userData'), 'suno-playwright-session');
     
+    // Ensure the directory exists
+    if (!fs.existsSync(userDataDir)) {
+        fs.mkdirSync(userDataDir, { recursive: true });
+    }
+
     try {
-        event.sender.send('suno-status', '브라우저를 엽니다... (필요시 로그인해주세요)');
-        
-        // Launch persistent context to keep the session alive across runs
-        const context = await chromium.launchPersistentContext(userDataDir, {
-            headless: false, // Must be visible for initial login or Captcha
-            viewport: { width: 1280, height: 800 }
-        });
+        // 이미 브라우저가 열려 있는지 확인 및 재사용
+        if (sunoBrowserContext) {
+            try {
+                const pages = sunoBrowserContext.pages();
+                if (pages.length > 0) {
+                    const page = pages[0];
+                    await page.bringToFront();
+                    console.log('Reusing existing Suno browser context');
+                } else {
+                    sunoBrowserContext = null;
+                }
+            } catch (e) {
+                sunoBrowserContext = null;
+            }
+        }
+
+        if (!sunoBrowserContext) {
+            // Remove SingletonLock if it exists (prevents "Target page, context or browser has been closed" error)
+            const lockFile = path.join(userDataDir, 'SingletonLock');
+            if (fs.existsSync(lockFile)) {
+                try {
+                    fs.unlinkSync(lockFile);
+                    console.log('Removed Suno browser lock file');
+                } catch (e) {
+                    console.warn('Could not remove lock file:', e.message);
+                }
+            }
+
+            event.sender.send('suno-status', '브라우저를 엽니다... (필요시 로그인해주세요)');
+            
+            // Launch persistent context to keep the session alive across runs
+            sunoBrowserContext = await chromium.launchPersistentContext(userDataDir, {
+                headless: false,
+                viewport: { width: 1280, height: 800 }
+            });
+        }
+
+        const context = sunoBrowserContext;
         const page = context.pages()[0] || await context.newPage();
+
         
         await page.goto('https://suno.com/');
         
@@ -731,15 +992,7 @@ ipcMain.handle('generate-suno-song', async (event, articleData) => {
         
         // Activate Advanced Mode (formerly Custom Mode)
         // User said: "Custom Mode" (직접 가사 입력 모드) 활성화
-        const customBtn = page.locator('button:has-text("Custom"), button:has-text("Advanced"), label:has-text("Custom"), label:has-text("Advanced")').first();
-        if (await customBtn.count() > 0) {
-            // Check if it's already active by looking for lyrics textarea
-            const lyricsTextarea = page.locator('[data-testid="lyrics-input-textarea"], textarea[placeholder*="lyrics" i]').first();
-            if (await lyricsTextarea.count() === 0) {
-                await customBtn.click();
-                await page.waitForTimeout(1000);
-            }
-        }
+        await ensureSunoAdvancedMode(page, event);
 
         event.sender.send('suno-status', '가사와 스타일, 제목을 입력합니다...');
         
@@ -754,36 +1007,32 @@ ipcMain.handle('generate-suno-song', async (event, articleData) => {
 
         // 1. Fill Lyrics (summary) - Use insertText to preserve newlines perfectly
         const summaryText = articleData.summary || '';
-        const lyricsInput = page.locator('[data-testid*="lyrics-wrapper" i] textarea, [data-testid="lyrics-input-textarea"], textarea[placeholder*="lyrics" i], textarea[placeholder*="가사" i]').first();
+        const lyricsInput = await firstVisible(page, sunoLyricsInputs(page));
+        await replaceInputText(page, lyricsInput, summaryText);
+
+        // 2. Fill Style
+        const styleInput = await firstVisible(page, sunoStyleInputs(page));
+        await replaceInputText(page, styleInput, '아주 빠른 한국의 랩');
+
+        /*
+        const lyricsInput = await firstVisible(page, page.locator('[data-testid*="lyrics-wrapper" i] textarea, [data-testid="lyrics-input-textarea"], textarea[placeholder*="lyrics" i], textarea[placeholder*="가사" i]'));
         await lyricsInput.scrollIntoViewIfNeeded();
         await lyricsInput.focus();
         await page.keyboard.insertText(summaryText);
         
         // 2. Fill Style
-        const styleInput = page.locator('[data-testid*="styles-wrapper" i] textarea, [data-testid="tag-input-textarea"], [placeholder="Style of Music" i], [placeholder="음악 스타일" i], textarea[placeholder*="인트로" i]').first();
-        if (await styleInput.count() > 0) {
-            await styleInput.scrollIntoViewIfNeeded();
-            await styleInput.fill('아주 빠른 한국의 랩');
-        } else {
-            // Last resort: find by location or aria-label
-            await page.locator('textarea[aria-label*="Style" i], textarea[aria-label*="스타일" i]').first().fill('아주 빠른 한국의 랩');
-        }
+        const styleInput = await firstVisible(page, page.locator('[data-testid*="styles-wrapper" i] textarea, [data-testid="tag-input-textarea"], [placeholder="Style of Music" i], [placeholder="음악 스타일" i], textarea[placeholder*="인트로" i], textarea[aria-label*="Style" i], textarea[aria-label*="스타일" i]'));
+        await styleInput.scrollIntoViewIfNeeded();
+        await styleInput.fill('아주 빠른 한국의 랩');
 
+        */
         // 3. Fill Title
-        const titleInput = page.locator('[data-testid*="title-wrapper" i] input, [data-testid="title-input-textarea"], [placeholder*="title" i], [placeholder*="제목" i]').first();
-        if (articleData.title && await titleInput.count() > 0) {
+        const titleInputs = page.locator('[data-testid*="title-wrapper" i] input, [data-testid="title-input-textarea"], [placeholder*="title" i], [placeholder*="제목" i]');
+        if (articleData.title && await titleInputs.count() > 0) {
             try {
+                const titleInput = await firstVisible(page, titleInputs, 5000);
                 await titleInput.scrollIntoViewIfNeeded();
-                if (await titleInput.isVisible()) {
-                    await titleInput.fill(articleData.title);
-                } else {
-                    // If still not visible (e.g. inside a collapsed section), try to force evaluate
-                    await titleInput.evaluate((el, val) => {
-                        el.value = val;
-                        el.dispatchEvent(new Event('input', { bubbles: true }));
-                        el.dispatchEvent(new Event('change', { bubbles: true }));
-                    }, articleData.title);
-                }
+                await titleInput.fill(articleData.title);
             } catch (err) {
                 console.log('Title fill error, skipping...', err.message);
             }
@@ -810,23 +1059,22 @@ ipcMain.handle('generate-suno-song', async (event, articleData) => {
         while (Date.now() - startTime < timeout) {
             try {
                 // Find the first track's menu button (three dots)
-                // Use a more specific selector based on the workspace view
-                const menuButton = page.locator('button[aria-haspopup="menu"], button:has([data-icon="ellipsis"]), button:has-text("..."), [data-testid="song-row-menu-button"]').first();
+                const menuButton = page.locator("button[aria-label='More options']").first();
                 
                 if (await menuButton.isVisible()) {
                     await menuButton.click({ force: true });
                     await page.waitForTimeout(1000);
                     
                     // Click Download in the menu
-                    // Use text match for "Download"
-                    const downloadMenu = page.locator('div[role="menuitem"]:has-text("Download"), button:has-text("Download"), [data-testid="song-menu-download"]').first();
+                    const downloadMenu = page.locator('button:has-text("Download"), [role="menuitem"]:has-text("Download")').first();
                     if (await downloadMenu.isVisible()) {
-                        await downloadMenu.hover();
-                        await page.waitForTimeout(500);
+                        await downloadMenu.click();
+                        await page.waitForTimeout(1500); // 서브 메뉴가 나타날 시간을 충분히 부여
                         
-                        // Click MP3 Audio (User's screenshot shows exactly "MP3 Audio")
-                        const audioButton = page.locator('div[role="menuitem"]:has-text("MP3 Audio"), button:has-text("MP3 Audio"), div[role="menuitem"]:has-text("Audio")').first();
+                        // Click MP3 Audio
+                        const audioButton = page.locator('button[aria-label="MP3 Audio"], button:has-text("MP3 Audio"), [role="menuitem"]:has-text("MP3 Audio")').first();
                         if (await audioButton.isVisible()) {
+
                             event.sender.send('suno-status', 'MP3 다운로드를 시작합니다...');
                             
                             // Setup download listener
@@ -834,13 +1082,20 @@ ipcMain.handle('generate-suno-song', async (event, articleData) => {
                             await audioButton.click();
                             const download = await downloadPromise;
                             
-                            // Save to outputs/suno
+                            // Save under ./electron/outputs/suno so generated audio stays with app outputs.
                             const sunoDir = path.join(__dirname, 'outputs', 'suno');
+                                
                             if (!fs.existsSync(sunoDir)) fs.mkdirSync(sunoDir, { recursive: true });
                             
-                            const fileName = `${Date.now()}_suno.mp3`;
+                            const suggestedName = download.suggestedFilename();
+                            const parsedName = path.parse(suggestedName || '');
+                            const safeBaseName = (parsedName.name || `${Date.now()}_suno`)
+                                .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+                                .trim();
+                            const fileName = `${safeBaseName || `${Date.now()}_suno`}.mp3`;
                             const filePath = path.join(sunoDir, fileName);
                             await download.saveAs(filePath);
+
                             
                             downloaded = true;
                             event.sender.send('suno-status', `다운로드 완료: ${fileName}`);
@@ -864,6 +1119,76 @@ ipcMain.handle('generate-suno-song', async (event, articleData) => {
         return { success: true, message: 'Suno AI 곡 생성 및 MP3 다운로드가 완료되었습니다.' };
     } catch (error) {
         console.error('Error generating Suno song:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+// --- Subtitle Refiner ---
+ipcMain.handle('refine-subtitles', async (event, { srtPath, summaryText }) => {
+    try {
+        const apiKey = process.env.OPENAI_API_KEY;
+        if (!apiKey) throw new Error('OPENAI_API_KEY가 설정되지 않았습니다.');
+        
+        const openai = new OpenAI({ apiKey });
+        const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+
+        event.sender.send('refine-status', '자막 파일을 읽고 있습니다...');
+        const srtContent = fs.readFileSync(srtPath, 'utf8');
+
+        // SRT 블록 분리
+        const blocks = srtContent.trim().split(/\n\s*\n/);
+        const totalBlocks = blocks.length;
+        const refinedBlocks = [];
+        const chunkSize = 15;
+
+        event.sender.send('refine-status', `총 ${totalBlocks}개의 자막 블록 처리를 시작합니다...`);
+
+        for (let i = 0; i < totalBlocks; i += chunkSize) {
+            const chunk = blocks.slice(i, i + chunkSize).join('\n\n');
+            const currentProgress = Math.min(i + chunkSize, totalBlocks);
+            
+            event.sender.send('refine-status', `교정 중... (${currentProgress}/${totalBlocks} 블록)`);
+
+            const prompt = `
+원본 텍스트(정답 가이드):
+"""
+${summaryText}
+"""
+
+교정할 SRT 자막 청크:
+"""
+${chunk}
+"""
+
+지시사항:
+1. 제공된 '원본 텍스트'를 참고하여 SRT 자막의 오타, 잘못 인식된 단어, 띄어쓰기를 정확하게 수정하세요.
+2. 타임스탬프(예: 00:00:10,000 --> 00:00:15,000)와 자막 번호는 **절대** 변경하거나 삭제하지 마세요. 형식을 엄격히 유지해야 합니다.
+3. 원본 텍스트에 없는 부연 설명은 추가하지 마세요.
+4. "구독, 좋아요"와 같은 문구는 SRT에 포함되어 있다면 원본 텍스트의 맥락에 맞게 유지하세요.
+5. 결과는 SRT 형식의 자막 청크만 응답하세요. 다른 설명은 포함하지 마세요.
+`;
+
+            const response = await openai.chat.completions.create({
+                model: model,
+                messages: [{ role: 'user', content: prompt }],
+                temperature: 0,
+            });
+
+            refinedBlocks.push(stripMarkdownFence(response.choices[0].message.content));
+        }
+
+        const outputDir = path.dirname(srtPath);
+        const ext = path.extname(srtPath);
+        const basename = path.basename(srtPath, ext);
+        const outputPath = path.join(outputDir, `${basename}_refined${ext}`);
+
+        fs.writeFileSync(outputPath, refinedBlocks.join('\n\n'), 'utf8');
+        
+        event.sender.send('refine-status', '교정 완료!');
+        return { success: true, outputPath };
+
+    } catch (error) {
+        console.error('Error refining subtitles:', error);
         return { success: false, error: error.message };
     }
 });

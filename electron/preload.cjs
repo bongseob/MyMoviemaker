@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('electron', {
     selectFiles: (options) => ipcRenderer.invoke('select-files', options),
+    selectSrtFile: () => ipcRenderer.invoke('select-srt-file'),
     selectSavePath: (options) => ipcRenderer.invoke('select-save-path', options),
     exportVideo: (data) => ipcRenderer.invoke('export-video', data),
     onProgress: (callback) => ipcRenderer.on('export-progress', (event, value) => callback(value)),
@@ -29,5 +30,13 @@ contextBridge.exposeInMainWorld('electron', {
     },
     removeSunoStatusListener: () => {
         ipcRenderer.removeAllListeners('suno-status');
+    },
+    // Subtitle Refiner API
+    refineSubtitles: (data) => ipcRenderer.invoke('refine-subtitles', data),
+    onRefineStatus: (callback) => {
+        ipcRenderer.on('refine-status', (_event, status) => callback(status));
+    },
+    removeRefineStatusListener: () => {
+        ipcRenderer.removeAllListeners('refine-status');
     }
 });

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Loader2, FileJson, CheckCircle2, AlertCircle } from 'lucide-react';
 
-interface ArticleSummary {
+export interface ArticleSummary {
   title: string;
   subtopics: string[];
   summary: string;
@@ -9,10 +9,22 @@ interface ArticleSummary {
   content: string;
 }
 
-export default function ArticleSummarizer() {
+interface ArticleSummarizerProps {
+  onResultChange?: (result: ArticleSummary | null) => void;
+  initialResult?: ArticleSummary | null;
+}
+
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : 'Unknown error occurred.';
+};
+
+const electronUnavailableMessage =
+  'Electron API is not available. Run `npm run electron:dev` and use the desktop app window, not the browser tab.';
+
+export default function ArticleSummarizer({ onResultChange, initialResult }: ArticleSummarizerProps) {
   const [articleText, setArticleText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [result, setResult] = useState<ArticleSummary | null>(null);
+  const [result, setResult] = useState<ArticleSummary | null>(initialResult || null);
   const [savedPath, setSavedPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,25 +34,36 @@ export default function ArticleSummarizer() {
   const [isGeneratingSuno, setIsGeneratingSuno] = useState(false);
   const [sunoStatus, setSunoStatus] = useState<string | null>(null);
 
-  // 컴포넌트 마운트 시 IPC 이벤트 리스너 등록
-  React.useEffect(() => {
-    (window as any).electron.onPublishStatus((status: string) => {
+  useEffect(() => {
+    const electron = window.electron;
+    if (!electron) {
+      setError(electronUnavailableMessage);
+      return;
+    }
+
+    electron.onPublishStatus((status: string) => {
       setPublishStatus(status);
     });
-    
-    (window as any).electron.onSunoStatus((status: string) => {
+
+    electron.onSunoStatus((status: string) => {
       setSunoStatus(status);
     });
-    
+
     return () => {
-      (window as any).electron.removePublishStatusListener();
-      (window as any).electron.removeSunoStatusListener();
+      electron.removePublishStatusListener();
+      electron.removeSunoStatusListener();
     };
   }, []);
 
   const handleProcess = async () => {
+    const electron = window.electron;
+    if (!electron) {
+      setError(electronUnavailableMessage);
+      return;
+    }
+
     if (!articleText.trim()) {
-      setError('기사 내용을 입력해주세요.');
+      setError('Please enter article text.');
       return;
     }
 
@@ -51,37 +74,39 @@ export default function ArticleSummarizer() {
     setPublishStatus(null);
 
     try {
-      const response = await (window as any).electron.processArticle(articleText);
-      if (response.success) {
+      const response = await electron.processArticle(articleText);
+      if (response.success && response.data) {
         setResult(response.data);
-        setSavedPath(response.savedPath);
+        onResultChange?.(response.data);
+        setSavedPath(response.savedPath || null);
       } else {
-        setError(response.error || '변환 중 오류가 발생했습니다.');
+        setError(response.error || 'Failed to convert article.');
       }
-    } catch (err: any) {
-      setError(err.message || '알 수 없는 오류가 발생했습니다.');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
     } finally {
       setIsProcessing(false);
     }
   };
 
   const handlePublish = async () => {
-    if (!result) return;
-    
+    const electron = window.electron;
+    if (!electron || !result) return;
+
     setIsPublishing(true);
     setError(null);
-    setPublishStatus('초기화 중...');
+    setPublishStatus('Preparing...');
 
     try {
-      const response = await (window as any).electron.publishArticle(result);
+      const response = await electron.publishArticle(result);
       if (response.success) {
-        setPublishStatus(response.message);
+        setPublishStatus(response.message || 'Article was published.');
       } else {
-        setError(response.error || '등록 중 오류가 발생했습니다.');
+        setError(response.error || 'Failed to publish article.');
         setPublishStatus(null);
       }
-    } catch (err: any) {
-      setError(err.message || '알 수 없는 오류가 발생했습니다.');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
       setPublishStatus(null);
     } finally {
       setIsPublishing(false);
@@ -89,22 +114,23 @@ export default function ArticleSummarizer() {
   };
 
   const handleGenerateSuno = async () => {
-    if (!result) return;
-    
+    const electron = window.electron;
+    if (!electron || !result) return;
+
     setIsGeneratingSuno(true);
     setError(null);
-    setSunoStatus('초기화 중...');
+    setSunoStatus('Preparing...');
 
     try {
-      const response = await (window as any).electron.generateSunoSong(result);
+      const response = await electron.generateSunoSong(result);
       if (response.success) {
-        setSunoStatus(`성공: ${response.message}`);
+        setSunoStatus(`Success: ${response.message || 'Song generation completed.'}`);
       } else {
-        setError(response.error || 'Suno AI 생성 중 오류가 발생했습니다.');
+        setError(response.error || 'Failed to generate Suno song.');
         setSunoStatus(null);
       }
-    } catch (err: any) {
-      setError(err.message || '알 수 없는 오류가 발생했습니다.');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
       setSunoStatus(null);
     } finally {
       setIsGeneratingSuno(false);
@@ -115,22 +141,25 @@ export default function ArticleSummarizer() {
     <div className="h-full flex flex-col p-6 bg-slate-900/50 overflow-y-auto">
       <div className="max-w-4xl w-full mx-auto space-y-6">
         <header className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">기사 요약 및 JSON 변환</h1>
-          <p className="text-slate-400">신문 기사를 붙여넣으면 AI가 분석하여 JSON 파일로 자동 저장합니다.</p>
+          <h1 className="text-3xl font-bold text-white mb-2">&#44592;&#49324; &#50836;&#50557; &#48143; JSON &#48320;&#54872;</h1>
+          <p className="text-slate-400">
+            &#49888;&#47928; &#44592;&#49324;&#47484; &#48537;&#50668;&#45347;&#51004;&#47732; AI&#44032; &#48516;&#49437;&#54616;&#50668; JSON &#54028;&#51068;&#47196; &#51088;&#46041; &#51200;&#51109;&#54633;&#45768;&#45796;.
+          </p>
         </header>
 
         <div className="space-y-4">
-          <label className="text-sm font-semibold text-slate-300 uppercase tracking-widest">기사 원문</label>
+          <label className="text-sm font-semibold text-slate-300 uppercase tracking-widest">&#44592;&#49324; &#50896;&#47928;</label>
           <textarea
             value={articleText}
             onChange={(e) => setArticleText(e.target.value)}
-            placeholder="여기에 기사 내용을 붙여넣으세요..."
+            placeholder="&#50668;&#44592;&#50640; &#44592;&#49324; &#45236;&#50857;&#51012; &#48537;&#50668;&#45347;&#51004;&#49464;&#50836;..."
             className="w-full h-64 bg-black/40 border border-white/10 rounded-xl p-4 text-sm focus:border-primary outline-none transition-all text-white resize-none"
             disabled={isProcessing || isPublishing}
           />
         </div>
 
         <button
+          type="button"
           onClick={handleProcess}
           disabled={isProcessing || isPublishing || !articleText.trim()}
           className={`w-full py-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
@@ -142,12 +171,12 @@ export default function ArticleSummarizer() {
           {isProcessing ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              <span>AI 분석 및 저장 중...</span>
+              <span>AI &#48516;&#49437; &#48143; &#51200;&#51109; &#51473;...</span>
             </>
           ) : (
             <>
               <FileJson className="w-5 h-5" />
-              <span>JSON 변환 및 자동 저장</span>
+              <span>JSON &#48320;&#54872; &#48143; &#51088;&#46041; &#51200;&#51109;</span>
             </>
           )}
         </button>
@@ -164,21 +193,22 @@ export default function ArticleSummarizer() {
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
                 <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                분석 결과
+                &#48516;&#49437; &#44208;&#44284;
               </h2>
               {savedPath && (
                 <span className="text-xs text-emerald-400/80 bg-emerald-400/10 px-3 py-1 rounded-full border border-emerald-400/20">
-                  저장됨: {savedPath}
+                  &#51200;&#51109;&#46120;: {savedPath}
                 </span>
               )}
             </div>
-            
+
             <div className="bg-black/60 border border-white/10 rounded-xl p-6 font-mono text-sm overflow-x-auto text-emerald-300">
               <pre>{JSON.stringify(result, null, 2)}</pre>
             </div>
 
             <div className="pt-4 border-t border-white/10 space-y-3">
               <button
+                type="button"
                 onClick={handlePublish}
                 disabled={isPublishing || isGeneratingSuno}
                 className={`w-full py-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
@@ -190,12 +220,10 @@ export default function ArticleSummarizer() {
                 {isPublishing ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>{publishStatus || '자동 등록 진행 중...'}</span>
+                    <span>{publishStatus || 'Publishing...'}</span>
                   </>
                 ) : (
-                  <>
-                    <span>어드민에 기사 등록하기 (자동화 봇 실행)</span>
-                  </>
+                  <span>&#50612;&#46300;&#48124;&#50640; &#44592;&#49324; &#46321;&#47197;&#54616;&#44592;</span>
                 )}
               </button>
               {publishStatus && !isPublishing && !error && (
@@ -203,6 +231,7 @@ export default function ArticleSummarizer() {
               )}
 
               <button
+                type="button"
                 onClick={handleGenerateSuno}
                 disabled={isPublishing || isGeneratingSuno}
                 className={`w-full py-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
@@ -214,12 +243,10 @@ export default function ArticleSummarizer() {
                 {isGeneratingSuno ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>{sunoStatus || 'Suno AI 생성 진행 중...'}</span>
+                    <span>{sunoStatus || 'Generating Suno song...'}</span>
                   </>
                 ) : (
-                  <>
-                    <span>Suno AI 노래 생성하기</span>
-                  </>
+                  <span>Suno AI &#45432;&#47000; &#49373;&#49457;&#54616;&#44592;</span>
                 )}
               </button>
               {sunoStatus && !isGeneratingSuno && !error && (
