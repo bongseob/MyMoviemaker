@@ -74,6 +74,11 @@ type RefineSubtitlesPayload = {
   summaryText: string;
 };
 
+type SaveSrtContentPayload = {
+  srtPath: string;
+  content: string;
+};
+
 interface ElectronApi {
   selectFiles: (options: OpenDialogOptions) => Promise<OpenDialogResult>;
   selectSrtFile: () => Promise<OpenDialogResult>;
@@ -85,6 +90,8 @@ interface ElectronApi {
   close: () => void;
   youtubeSetupAuth: (config?: YoutubeAuthConfig) => Promise<IpcResult>;
   youtubeLogin: () => Promise<IpcResult>;
+  youtubeLogout: () => Promise<IpcResult>;
+  youtubeClearToken: () => Promise<IpcResult>;
   youtubeUpload: (data: YoutubeUploadPayload) => Promise<IpcResult>;
   onYoutubeUploadProgress: (callback: (value: number) => void) => void;
   processArticle: (text: string) => Promise<IpcResult<ArticleSummary>>;
@@ -94,6 +101,8 @@ interface ElectronApi {
   generateSunoSong: (articleData: ArticleSummary) => Promise<IpcResult>;
   onSunoStatus: (callback: (status: string) => void) => void;
   removeSunoStatusListener: () => void;
+  generateSrtFromSuno: () => Promise<IpcResult & { sourcePath?: string }>;
+  saveSrtContent: (data: SaveSrtContentPayload) => Promise<IpcResult>;
   refineSubtitles: (data: RefineSubtitlesPayload) => Promise<IpcResult>;
   onRefineStatus: (callback: (status: string) => void) => void;
   removeRefineStatusListener: () => void;

@@ -303,6 +303,14 @@ export default function App() {
     }
   };
 
+  const handleYtAccountChange = async () => {
+    if (window.electron) {
+      await window.electron.youtubeLogout();
+    }
+    setIsYtAuthenticated(false);
+    setYtUploadSuccess(false);
+  };
+
   useEffect(() => {
     const checkYtAuth = async () => {
       if (window.electron) {
@@ -324,13 +332,20 @@ export default function App() {
     setYtUploadProgress(0);
     setYtUploadSuccess(false);
     try {
-      await window.electron.youtubeUpload({
+      const response = await window.electron.youtubeUpload({
         videoPath: ytVideoPath,
         title: ytTitle,
         description: ytDescription,
         privacyStatus: ytPrivacy
       });
-      setYtUploadSuccess(true);
+      if (response.success) {
+        setYtUploadSuccess(true);
+      } else {
+        if (response.isAuthenticated === false || response.error?.includes('다시 진행')) {
+          setIsYtAuthenticated(false);
+        }
+        alert(`Upload failed: ${response.error || 'Unknown error'}`);
+      }
     } catch (err: unknown) {
       console.error('Upload failed:', err);
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -729,7 +744,7 @@ export default function App() {
                             <span className="text-xs text-emerald-400 flex items-center gap-1">
                               <CheckCircle2 className="w-3 h-3" /> 인증됨
                             </span>
-                            <button onClick={() => setIsYtAuthenticated(false)} className="text-[10px] text-slate-500 hover:text-white underline">계정 변경</button>
+                            <button onClick={handleYtAccountChange} className="text-[10px] text-slate-500 hover:text-white underline">계정 변경</button>
                           </div>
 
                           <button

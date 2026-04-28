@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, CheckCircle2, AlertCircle, FileText, Upload, Check } from 'lucide-react';
+import { Loader2, CheckCircle2, AlertCircle, FileText, Upload, Check, Captions, Save } from 'lucide-react';
 
 interface SubtitleRefinerProps {
   initialSummary?: string;
@@ -16,9 +16,13 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
   const [srtPath, setSrtPath] = useState<string | null>(null);
   const [summaryText, setSummaryText] = useState(initialSummary || '');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isGeneratingSrt, setIsGeneratingSrt] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successPath, setSuccessPath] = useState<string | null>(null);
+  const [sourceAudioPath, setSourceAudioPath] = useState<string | null>(null);
+  const [refinedContent, setRefinedContent] = useState('');
+  const [isSavingContent, setIsSavingContent] = useState(false);
 
   useEffect(() => {
     if (initialSummary && !summaryText) {
@@ -57,6 +61,7 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
       if (!result.canceled && result.filePaths.length > 0) {
         setSrtPath(result.filePaths[0]);
         setSuccessPath(null);
+        setRefinedContent('');
         setStatus(null);
       }
     } catch (err: unknown) {
@@ -76,6 +81,7 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
     setIsProcessing(true);
     setError(null);
     setSuccessPath(null);
+    setRefinedContent('');
     setStatus('Preparing subtitle refinement...');
 
     try {
@@ -85,7 +91,9 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
       });
 
       if (response.success) {
+        const data = response.data as { content?: string } | undefined;
         setSuccessPath(response.outputPath || null);
+        setRefinedContent(data?.content || '');
         setStatus('Subtitle refinement completed.');
       } else {
         setError(response.error || 'Failed to refine subtitles.');
@@ -96,6 +104,77 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
       setStatus(null);
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleGenerateSrtFromSuno = async () => {
+    const electron = window.electron;
+    if (!electron) {
+      setError(electronUnavailableMessage);
+      return;
+    }
+
+    setIsGeneratingSrt(true);
+    setError(null);
+    setSuccessPath(null);
+    setSourceAudioPath(null);
+    setRefinedContent('');
+    setStatus('Preparing SRT generation from the latest Suno MP3...');
+
+    try {
+      const response = await electron.generateSrtFromSuno();
+
+      if (response.success && response.outputPath) {
+        setSrtPath(response.outputPath);
+        setSuccessPath(response.outputPath);
+        setSourceAudioPath(response.sourcePath || null);
+        setRefinedContent('');
+        setStatus('SRT generation completed.');
+      } else {
+        setError(response.error || 'Failed to generate SRT from Suno MP3.');
+        setStatus(null);
+      }
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
+      setStatus(null);
+    } finally {
+      setIsGeneratingSrt(false);
+    }
+  };
+
+  const handleSaveRefinedContent = async () => {
+    const electron = window.electron;
+    const targetPath = successPath || srtPath;
+
+    if (!electron) {
+      setError(electronUnavailableMessage);
+      return;
+    }
+
+    if (!targetPath || !refinedContent.trim()) return;
+
+    setIsSavingContent(true);
+    setError(null);
+    setStatus('Saving manual subtitle edits...');
+
+    try {
+      const response = await electron.saveSrtContent({
+        srtPath: targetPath,
+        content: refinedContent
+      });
+
+      if (response.success) {
+        setSuccessPath(response.outputPath || targetPath);
+        setStatus('Manual subtitle edits saved.');
+      } else {
+        setError(response.error || 'Failed to save subtitle edits.');
+        setStatus(null);
+      }
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
+      setStatus(null);
+    } finally {
+      setIsSavingContent(false);
     }
   };
 
@@ -133,6 +212,36 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
               className="w-full h-80 bg-black/40 border border-white/10 rounded-2xl p-5 text-sm focus:border-primary outline-none transition-all text-white resize-none leading-relaxed"
               disabled={isProcessing}
             />
+
+            {refinedContent && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <label className="text-sm font-semibold text-slate-300 uppercase tracking-widest flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-emerald-400" />
+                    Final SRT Review
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleSaveRefinedContent}
+                    disabled={isSavingContent || isProcessing || isGeneratingSrt || !refinedContent.trim()}
+                    className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-400 text-xs font-bold text-white transition-colors flex items-center gap-2"
+                  >
+                    {isSavingContent ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    저장
+                  </button>
+                </div>
+                <textarea
+                  value={refinedContent}
+                  onChange={(e) => setRefinedContent(e.target.value)}
+                  placeholder="교정된 SRT 내용이 여기에 표시됩니다."
+                  className="w-full h-96 bg-black/40 border border-emerald-500/30 rounded-2xl p-5 text-sm focus:border-emerald-400 outline-none transition-all text-white resize-y leading-relaxed font-mono"
+                  disabled={isSavingContent}
+                />
+                <p className="text-xs text-slate-400">
+                  교정 결과를 최종 확인한 뒤 직접 수정하고 저장할 수 있습니다.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="space-y-6">
@@ -144,8 +253,31 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
 
               <button
                 type="button"
+                onClick={handleGenerateSrtFromSuno}
+                disabled={isProcessing || isGeneratingSrt}
+                className={`w-full py-5 rounded-2xl font-bold text-lg transition-all flex items-center justify-center gap-3 shadow-xl ${
+                  isProcessing || isGeneratingSrt
+                    ? 'bg-slate-800 text-slate-500 cursor-not-allowed shadow-none'
+                    : 'bg-indigo-600 hover:bg-indigo-500 text-white hover:shadow-indigo-500/20'
+                }`}
+              >
+                {isGeneratingSrt ? (
+                  <>
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                    <span>{status || 'Generating SRT...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Captions className="w-6 h-6" />
+                    <span>Suno MP3로 SRT 생성</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
                 onClick={handleSelectSrt}
-                disabled={isProcessing}
+                disabled={isProcessing || isGeneratingSrt}
                 className={`w-full group relative overflow-hidden transition-all duration-300 ${
                   srtPath
                     ? 'bg-teal-500/10 border-teal-500/50'
@@ -171,9 +303,9 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
             <button
               type="button"
               onClick={handleRefine}
-              disabled={isProcessing || !srtPath || !summaryText.trim()}
+              disabled={isProcessing || isGeneratingSrt || !srtPath || !summaryText.trim()}
               className={`w-full py-5 rounded-2xl font-bold text-lg transition-all flex items-center justify-center gap-3 shadow-xl ${
-                isProcessing || !srtPath || !summaryText.trim()
+                isProcessing || isGeneratingSrt || !srtPath || !summaryText.trim()
                   ? 'bg-slate-800 text-slate-500 cursor-not-allowed shadow-none'
                   : 'bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white hover:shadow-teal-500/20'
               }`}
@@ -207,8 +339,13 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
                 <div className="text-sm text-slate-300 bg-black/30 p-3 rounded-lg break-all font-mono">
                   {successPath}
                 </div>
+                {sourceAudioPath && (
+                  <div className="text-xs text-slate-400 bg-black/20 p-3 rounded-lg break-all font-mono">
+                    Source MP3: {sourceAudioPath}
+                  </div>
+                )}
                 <p className="text-xs text-slate-400">
-                  The refined SRT was saved next to the original file with _refined added to the name.
+                  Generated SRT files use yyyymmdd.srt, with _1, _2 added when the file already exists.
                 </p>
               </div>
             )}

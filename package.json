@@ -1,12 +1,14 @@
 {
   "name": "mymoviemaker",
   "private": true,
+  "type": "module",
   "version": "0.0.0",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite --port 5173 --strictPort",
     "build": "tsc && vite build",
     "lint": "eslint .",
+    "check:electron": "node -e \"const fs=require('fs');const path=require('path');const cp=require('child_process');function walk(dir){for(const entry of fs.readdirSync(dir,{withFileTypes:true})){const file=path.join(dir,entry.name);if(entry.isDirectory())walk(file);else if(file.endsWith('.cjs'))cp.execFileSync(process.execPath,['--check',file],{stdio:'inherit'});}}walk('electron');\"",
     "preview": "vite preview",
     "electron:dev": "cross-env NODE_ENV=development wait-on http://localhost:5173 && electron electron/main.cjs",
     "electron:build": "npm run build && electron-builder"
@@ -17,17 +19,23 @@
     "directories": {
       "output": "release"
     },
+    "compression": "normal",
     "files": [
+      "package.json",
       "dist/**/*",
-      "electron/**/*"
+      "electron/**/*.cjs",
+      "!electron/outputs/**/*",
+      "!node_modules/ffprobe-static/bin/darwin/**/*",
+      "!node_modules/ffprobe-static/bin/linux/**/*",
+      "!node_modules/ffprobe-static/bin/win32/ia32/**/*"
     ],
     "win": {
-      "target": "portable"
+      "target": "nsis"
     },
     "asar": true,
     "asarUnpack": [
       "**/node_modules/ffmpeg-static/ffmpeg.exe",
-      "**/node_modules/ffprobe-static/bin/**/*"
+      "**/node_modules/ffprobe-static/bin/win32/x64/ffprobe.exe"
     ]
   },
   "dependencies": {

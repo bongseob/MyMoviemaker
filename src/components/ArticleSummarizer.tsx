@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, FileJson, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Loader2, FileJson, CheckCircle2, AlertCircle, Copy } from 'lucide-react';
 
 export interface ArticleSummary {
   title: string;
@@ -7,6 +7,8 @@ export interface ArticleSummary {
   summary: string;
   hashtags: string[];
   content: string;
+  copyText?: string;
+  revisionNotes?: string[];
 }
 
 interface ArticleSummarizerProps {
@@ -21,6 +23,18 @@ const getErrorMessage = (error: unknown) => {
 const electronUnavailableMessage =
   'Electron API is not available. Run `npm run electron:dev` and use the desktop app window, not the browser tab.';
 
+const buildCopyText = (result: ArticleSummary) => {
+  if (result.copyText?.trim()) return result.copyText;
+
+  return [
+    result.title,
+    '',
+    ...(result.subtopics || []).map((item) => `- ${item}`),
+    '',
+    (result.hashtags || []).join(' ')
+  ].join('\n').trim();
+};
+
 export default function ArticleSummarizer({ onResultChange, initialResult }: ArticleSummarizerProps) {
   const [articleText, setArticleText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -33,6 +47,7 @@ export default function ArticleSummarizer({ onResultChange, initialResult }: Art
 
   const [isGeneratingSuno, setIsGeneratingSuno] = useState(false);
   const [sunoStatus, setSunoStatus] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
 
   useEffect(() => {
     const electron = window.electron;
@@ -72,6 +87,7 @@ export default function ArticleSummarizer({ onResultChange, initialResult }: Art
     setResult(null);
     setSavedPath(null);
     setPublishStatus(null);
+    setCopyStatus(null);
 
     try {
       const response = await electron.processArticle(articleText);
@@ -124,7 +140,8 @@ export default function ArticleSummarizer({ onResultChange, initialResult }: Art
     try {
       const response = await electron.generateSunoSong(result);
       if (response.success) {
-        setSunoStatus(`Success: ${response.message || 'Song generation completed.'}`);
+        const outputPath = response.outputPath ? `\n저장 위치: ${response.outputPath}` : '';
+        setSunoStatus(`${response.message || 'Song generation completed.'}${outputPath}`);
       } else {
         setError(response.error || 'Failed to generate Suno song.');
         setSunoStatus(null);
@@ -134,6 +151,17 @@ export default function ArticleSummarizer({ onResultChange, initialResult }: Art
       setSunoStatus(null);
     } finally {
       setIsGeneratingSuno(false);
+    }
+  };
+
+  const handleCopyText = async () => {
+    if (!result) return;
+
+    try {
+      await navigator.clipboard.writeText(buildCopyText(result));
+      setCopyStatus('복사되었습니다.');
+    } catch (err: unknown) {
+      setCopyStatus(getErrorMessage(err));
     }
   };
 
@@ -202,6 +230,42 @@ export default function ArticleSummarizer({ onResultChange, initialResult }: Art
               )}
             </div>
 
+            <div className="bg-black/50 border border-white/10 rounded-xl p-5 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-bold text-white uppercase tracking-widest">복사용 텍스트</h3>
+                <button
+                  type="button"
+                  onClick={handleCopyText}
+                  className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-xs font-bold text-slate-200 transition-colors flex items-center gap-2"
+                >
+                  <Copy className="w-4 h-4" />
+                  복사
+                </button>
+              </div>
+              <textarea
+                readOnly
+                value={buildCopyText(result)}
+                className="w-full h-40 bg-black/40 border border-white/10 rounded-lg p-4 text-sm text-slate-100 font-mono resize-none outline-none"
+              />
+              {copyStatus && (
+                <p className="text-xs text-emerald-400">{copyStatus}</p>
+              )}
+            </div>
+
+            {Array.isArray(result.revisionNotes) && result.revisionNotes.length > 0 && (
+              <div className="bg-black/50 border border-white/10 rounded-xl p-5 space-y-3">
+                <h3 className="text-sm font-bold text-white uppercase tracking-widest">기사 수정 내역</h3>
+                <ul className="space-y-2 text-sm text-slate-300">
+                  {result.revisionNotes.map((note, index) => (
+                    <li key={`${note}-${index}`} className="flex gap-2">
+                      <span className="text-primary">-</span>
+                      <span>{note}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <div className="bg-black/60 border border-white/10 rounded-xl p-6 font-mono text-sm overflow-x-auto text-emerald-300">
               <pre>{JSON.stringify(result, null, 2)}</pre>
             </div>
@@ -250,7 +314,7 @@ export default function ArticleSummarizer({ onResultChange, initialResult }: Art
                 )}
               </button>
               {sunoStatus && !isGeneratingSuno && !error && (
-                <p className="mt-2 text-sm text-center text-purple-400">{sunoStatus}</p>
+                <p className="mt-2 text-sm text-center text-purple-400 whitespace-pre-wrap break-all">{sunoStatus}</p>
               )}
             </div>
           </div>

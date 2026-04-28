@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('electron', {
     // YouTube Upload API
     youtubeSetupAuth: (config) => ipcRenderer.invoke('youtube-setup-auth', config),
     youtubeLogin: () => ipcRenderer.invoke('youtube-login'),
+    youtubeLogout: () => ipcRenderer.invoke('youtube-logout'),
+    youtubeClearToken: () => ipcRenderer.invoke('youtube-clear-token'),
     youtubeUpload: (data) => ipcRenderer.invoke('youtube-upload', data),
     onYoutubeUploadProgress: (callback) => ipcRenderer.on('youtube-upload-progress', (event, value) => callback(value)),
     // Article Summarizer API
@@ -32,6 +34,8 @@ contextBridge.exposeInMainWorld('electron', {
         ipcRenderer.removeAllListeners('suno-status');
     },
     // Subtitle Refiner API
+    generateSrtFromSuno: () => ipcRenderer.invoke('generate-srt-from-suno'),
+    saveSrtContent: (data) => ipcRenderer.invoke('save-srt-content', data),
     refineSubtitles: (data) => ipcRenderer.invoke('refine-subtitles', data),
     onRefineStatus: (callback) => {
         ipcRenderer.on('refine-status', (_event, status) => callback(status));
