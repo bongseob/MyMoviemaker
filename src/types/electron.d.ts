@@ -79,6 +79,10 @@ type SaveSrtContentPayload = {
   content: string;
 };
 
+type GenerateSrtPayload = {
+  mp3Path?: string | null;
+};
+
 interface ElectronApi {
   selectFiles: (options: OpenDialogOptions) => Promise<OpenDialogResult>;
   selectSrtFile: () => Promise<OpenDialogResult>;
@@ -101,7 +105,7 @@ interface ElectronApi {
   generateSunoSong: (articleData: ArticleSummary) => Promise<IpcResult>;
   onSunoStatus: (callback: (status: string) => void) => void;
   removeSunoStatusListener: () => void;
-  generateSrtFromSuno: () => Promise<IpcResult & { sourcePath?: string }>;
+  generateSrtFromSuno: (data?: GenerateSrtPayload) => Promise<IpcResult & { sourcePath?: string }>;
   saveSrtContent: (data: SaveSrtContentPayload) => Promise<IpcResult>;
   refineSubtitles: (data: RefineSubtitlesPayload) => Promise<IpcResult>;
   onRefineStatus: (callback: (status: string) => void) => void;

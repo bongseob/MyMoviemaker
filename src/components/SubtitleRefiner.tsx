@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, CheckCircle2, AlertCircle, FileText, Upload, Check, Captions, Save } from 'lucide-react';
+import { Loader2, CheckCircle2, AlertCircle, FileText, Upload, Check, Captions, Save, Music, X } from 'lucide-react';
 
 interface SubtitleRefinerProps {
   initialSummary?: string;
@@ -20,6 +20,7 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successPath, setSuccessPath] = useState<string | null>(null);
+  const [mp3Path, setMp3Path] = useState<string | null>(null);
   const [sourceAudioPath, setSourceAudioPath] = useState<string | null>(null);
   const [refinedContent, setRefinedContent] = useState('');
   const [isSavingContent, setIsSavingContent] = useState(false);
@@ -62,6 +63,33 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
         setSrtPath(result.filePaths[0]);
         setSuccessPath(null);
         setRefinedContent('');
+        setStatus(null);
+      }
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
+    }
+  };
+
+  const handleSelectMp3 = async () => {
+    const electron = window.electron;
+    if (!electron) {
+      setError(electronUnavailableMessage);
+      return;
+    }
+
+    setError(null);
+
+    try {
+      const result = await electron.selectFiles({
+        title: 'Select MP3 File',
+        properties: ['openFile'],
+        filters: [{ name: 'MP3 Audio', extensions: ['mp3'] }]
+      });
+
+      if (!result.canceled && result.filePaths.length > 0) {
+        setMp3Path(result.filePaths[0]);
+        setSourceAudioPath(null);
+        setSuccessPath(null);
         setStatus(null);
       }
     } catch (err: unknown) {
@@ -119,10 +147,10 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
     setSuccessPath(null);
     setSourceAudioPath(null);
     setRefinedContent('');
-    setStatus('Preparing SRT generation from the latest Suno MP3...');
+    setStatus(mp3Path ? 'Preparing SRT generation from the selected MP3...' : 'Preparing SRT generation from the latest Suno MP3...');
 
     try {
-      const response = await electron.generateSrtFromSuno();
+      const response = await electron.generateSrtFromSuno({ mp3Path });
 
       if (response.success && response.outputPath) {
         setSrtPath(response.outputPath);
@@ -247,9 +275,55 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
           <div className="space-y-6">
             <div className="space-y-4">
               <label className="text-sm font-semibold text-slate-300 uppercase tracking-widest flex items-center gap-2">
-                <Upload className="w-4 h-4 text-teal-400" />
-                SRT File to Refine
+                <Captions className="w-4 h-4 text-indigo-400" />
+                Step 1. Generate SRT from MP3
               </label>
+
+              <button
+                type="button"
+                onClick={handleSelectMp3}
+                disabled={isProcessing || isGeneratingSrt}
+                className={`w-full group relative overflow-hidden transition-all duration-300 ${
+                  mp3Path
+                    ? 'bg-indigo-500/10 border-indigo-500/50'
+                    : 'bg-black/40 border-dashed border-2 border-white/10 hover:border-indigo-500/50 hover:bg-indigo-500/5'
+                } border rounded-2xl p-6 flex items-center gap-4 disabled:cursor-not-allowed disabled:opacity-60`}
+              >
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-transform group-hover:scale-110 ${
+                  mp3Path ? 'bg-indigo-500/20' : 'bg-white/5'
+                }`}>
+                  {mp3Path ? <Check className="w-6 h-6 text-indigo-300" /> : <Music className="w-6 h-6 text-slate-400" />}
+                </div>
+                <div className="min-w-0 flex-1 text-left">
+                  <p className="font-semibold text-white truncate">
+                    {mp3Path ? mp3Path.split(/[\\/]/).pop() : 'MP3 파일 직접 선택'}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {mp3Path ? '선택한 MP3로 SRT를 생성합니다.' : '선택하지 않으면 최신 Suno MP3를 자동으로 사용합니다.'}
+                  </p>
+                </div>
+                {mp3Path && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setMp3Path(null);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setMp3Path(null);
+                      }
+                    }}
+                    className="p-2 rounded-lg bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white"
+                    aria-label="선택한 MP3 해제"
+                  >
+                    <X className="w-4 h-4" />
+                  </span>
+                )}
+              </button>
 
               <button
                 type="button"
@@ -274,6 +348,14 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
                 )}
               </button>
 
+            </div>
+
+            <div className="space-y-4">
+              <label className="text-sm font-semibold text-slate-300 uppercase tracking-widest flex items-center gap-2">
+                <Upload className="w-4 h-4 text-teal-400" />
+                Step 2. Select SRT to Refine
+              </label>
+
               <button
                 type="button"
                 onClick={handleSelectSrt}
@@ -291,10 +373,10 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
                 </div>
                 <div className="text-center">
                   <p className="font-semibold text-white">
-                    {srtPath ? srtPath.split(/[\\/]/).pop() : 'Select SRT File'}
+                    {srtPath ? srtPath.split(/[\\/]/).pop() : '교정할 SRT 파일 선택'}
                   </p>
                   <p className="text-xs text-slate-500 mt-1">
-                    {srtPath ? 'Click to choose a different file.' : 'SubRip Subtitle file (*.srt)'}
+                    {srtPath ? '다른 파일로 바꾸려면 다시 선택하세요.' : '생성된 SRT를 그대로 쓰거나 별도 SRT를 선택할 수 있습니다.'}
                   </p>
                 </div>
               </button>

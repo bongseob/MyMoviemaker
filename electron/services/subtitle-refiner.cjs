@@ -3,7 +3,7 @@ const path = require('path');
 const { OpenAI } = require('openai');
 const { getErrorMessage } = require('../lib/errors.cjs');
 const { getOutputDir } = require('../lib/paths.cjs');
-const { SRT_EXTENSIONS, assertExistingFile, assertPlainObject, assertText } = require('../lib/validation.cjs');
+const { AUDIO_EXTENSIONS, SRT_EXTENSIONS, assertExistingFile, assertPlainObject, assertText } = require('../lib/validation.cjs');
 
 function stripMarkdownFence(text) {
     const lines = String(text || '').trim().split(/\r?\n/);
@@ -63,13 +63,16 @@ function findLatestSunoMp3(sunoDir) {
 }
 
 function registerSubtitleIpc({ ipcMain, app, isDev }) {
-    ipcMain.handle('generate-srt-from-suno', async (event) => {
+    ipcMain.handle('generate-srt-from-suno', async (event, data = {}) => {
         try {
+            const payload = data ? assertPlainObject(data, 'SRT generation payload') : {};
             const apiKey = process.env.OPENAI_API_KEY;
             if (!apiKey) throw new Error('OPENAI_API_KEY가 설정되지 않았습니다.');
 
             const sunoDir = getOutputDir(app, isDev, 'suno');
-            const mp3Path = findLatestSunoMp3(sunoDir);
+            const mp3Path = payload.mp3Path
+                ? assertExistingFile(payload.mp3Path, 'MP3 file', AUDIO_EXTENSIONS)
+                : findLatestSunoMp3(sunoDir);
             const outputPath = createUniqueFilePath(sunoDir, `${getDateBaseName()}.srt`);
             const model = process.env.OPENAI_TRANSCRIBE_MODEL || 'whisper-1';
             const openai = new OpenAI({ apiKey });
@@ -160,7 +163,6 @@ function registerSubtitleIpc({ ipcMain, app, isDev }) {
                 const response = await openai.chat.completions.create({    
                     model: model,    
                     messages: [{ role: 'user', content: prompt }],    
-                    temperature: 0,    
                 });    
         
                 refinedBlocks.push(stripMarkdownFence(response.choices[0].message.content));

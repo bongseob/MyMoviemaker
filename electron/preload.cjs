@@ -34,7 +34,7 @@ contextBridge.exposeInMainWorld('electron', {
         ipcRenderer.removeAllListeners('suno-status');
     },
     // Subtitle Refiner API
-    generateSrtFromSuno: () => ipcRenderer.invoke('generate-srt-from-suno'),
+    generateSrtFromSuno: (data) => ipcRenderer.invoke('generate-srt-from-suno', data || {}),
     saveSrtContent: (data) => ipcRenderer.invoke('save-srt-content', data),
     refineSubtitles: (data) => ipcRenderer.invoke('refine-subtitles', data),
     onRefineStatus: (callback) => {
