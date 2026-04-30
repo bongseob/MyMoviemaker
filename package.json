@@ -11,7 +11,11 @@
     "check:electron": "node -e \"const fs=require('fs');const path=require('path');const cp=require('child_process');function walk(dir){for(const entry of fs.readdirSync(dir,{withFileTypes:true})){const file=path.join(dir,entry.name);if(entry.isDirectory())walk(file);else if(file.endsWith('.cjs'))cp.execFileSync(process.execPath,['--check',file],{stdio:'inherit'});}}walk('electron');\"",
     "preview": "vite preview",
     "electron:dev": "cross-env NODE_ENV=development wait-on http://localhost:5173 && electron electron/main.cjs",
-    "electron:build": "npm run build && electron-builder"
+    "electron:build": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win nsis --x64",
+    "dist:mac": "npm run build && electron-builder --mac dmg zip",
+    "dist:mac:x64": "npm run build && electron-builder --mac dmg zip --x64",
+    "dist:mac:arm64": "npm run build && electron-builder --mac dmg zip --arm64"
   },
   "build": {
     "appId": "com.antigravity.moviemaker",
@@ -24,18 +28,24 @@
       "package.json",
       "dist/**/*",
       "electron/**/*.cjs",
-      "!electron/outputs/**/*",
-      "!node_modules/ffprobe-static/bin/darwin/**/*",
-      "!node_modules/ffprobe-static/bin/linux/**/*",
-      "!node_modules/ffprobe-static/bin/win32/ia32/**/*"
+      "!electron/outputs/**/*"
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "artifactName": "${productName}-${version}-windows-${arch}.${ext}"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.video",
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}"
     },
     "asar": true,
     "asarUnpack": [
-      "**/node_modules/ffmpeg-static/ffmpeg.exe",
-      "**/node_modules/ffprobe-static/bin/win32/x64/ffprobe.exe"
+      "**/node_modules/ffmpeg-static/ffmpeg*",
+      "**/node_modules/ffprobe-static/bin/**/ffprobe*"
     ]
   },
   "dependencies": {

@@ -54,6 +54,34 @@ function formatSRTTime(seconds) {
     return `${timeStr},${ms}`;
 }
 
+function escapeFfmpegFilterPath(filePath) {
+    return filePath
+        .replace(/\\/g, '/')
+        .replace(/:/g, '\\:')
+        .replace(/'/g, "'\\\\\\''");
+}
+
+function getTitleFontPath() {
+    const candidatesByPlatform = {
+        darwin: [
+            '/System/Library/Fonts/AppleSDGothicNeo.ttc',
+            '/System/Library/Fonts/Supplemental/AppleGothic.ttf',
+            '/System/Library/Fonts/Supplemental/Arial Unicode.ttf'
+        ],
+        win32: [
+            'C:/Windows/Fonts/malgun.ttf',
+            'C:/Windows/Fonts/arial.ttf'
+        ],
+        linux: [
+            '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc',
+            '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+        ]
+    };
+
+    const candidates = candidatesByPlatform[process.platform] || candidatesByPlatform.linux;
+    return candidates.find((candidate) => fs.existsSync(candidate)) || candidates[0];
+}
+
 function registerVideoExportIpc({ ipcMain, app, isDev }) {
     const { ffmpegPath, ffprobePath } = configureFfmpeg({ app, isDev });
 
@@ -195,8 +223,8 @@ function registerVideoExportIpc({ ipcMain, app, isDev }) {
                         .replace(/,/g, '\\,');    
                     // Removed .replace(/\n/g, '\r') as it's non-standard and causes issues    
         
-                    const fontPath = 'C\\:/Windows/Fonts/malgun.ttf';    
-                    const position = data.titlePosition || 'bottom';    
+                    const fontPath = escapeFfmpegFilterPath(getTitleFontPath());
+                    const position = data.titlePosition || 'bottom';
         
                     let yPos = 'h-th-160'; // Tighter bottom margin    
                     if (position === 'top') yPos = '110'; // Tighter top margin    
