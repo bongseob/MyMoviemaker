@@ -173,6 +173,7 @@ export default function App() {
     const result = await electron.selectSavePath({
       title: 'Save Video',
       defaultPath: defaultFileName,
+      outputSection: 'videos',
       buttonLabel: 'Export',
       properties: ['createDirectory', 'showOverwriteConfirmation'],
       filters: [{ name: 'Video', extensions: ['mp4'] }]

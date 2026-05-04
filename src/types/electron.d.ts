@@ -14,6 +14,7 @@ type OpenDialogOptions = {
 type SaveDialogOptions = {
   title?: string;
   defaultPath?: string;
+  outputSection?: string;
   buttonLabel?: string;
   properties?: string[];
   filters?: DialogFilter[];

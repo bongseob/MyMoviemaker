@@ -1,6 +1,8 @@
 const { BrowserWindow } = require('electron');
+const path = require('path');
+const { getOutputDir } = require('../lib/paths.cjs');
 
-function registerDialogIpc({ ipcMain, dialog }) {
+function registerDialogIpc({ ipcMain, dialog, app, isDev }) {
     ipcMain.handle('select-files', async (_event, options) => {
         return dialog.showOpenDialog(options);
     });
@@ -14,8 +16,14 @@ function registerDialogIpc({ ipcMain, dialog }) {
         });
     });
 
-    ipcMain.handle('select-save-path', async (_event, options) => {
-        return dialog.showSaveDialog(options);
+    ipcMain.handle('select-save-path', async (_event, options = {}) => {
+        const { outputSection, ...dialogOptions } = options;
+
+        if (outputSection && dialogOptions.defaultPath && !path.isAbsolute(dialogOptions.defaultPath)) {
+            dialogOptions.defaultPath = path.join(getOutputDir(app, isDev, outputSection), dialogOptions.defaultPath);
+        }
+
+        return dialog.showSaveDialog(dialogOptions);
     });
 }
 
