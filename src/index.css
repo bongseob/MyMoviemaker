@@ -19,6 +19,21 @@ body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
+#root {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--color-background);
+}
+
+.subtitle-refiner-scroll {
+  contain: layout paint;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+  scrollbar-gutter: stable;
+}
+
 .glass-card {
   @apply bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl;
 }

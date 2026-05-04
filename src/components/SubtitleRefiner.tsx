@@ -207,8 +207,8 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
   };
 
   return (
-    <div className="h-full flex flex-col p-6 bg-slate-900/50 overflow-y-auto">
-      <div className="max-w-4xl w-full mx-auto space-y-8">
+    <div className="subtitle-refiner-scroll h-full min-h-0 flex flex-col p-6 bg-background overflow-y-auto overscroll-contain">
+      <div className="relative z-0 max-w-4xl w-full mx-auto space-y-8">
         <header className="mb-4">
           <h1 className="text-3xl font-bold text-white mb-2">AI Subtitle Refiner (SRT)</h1>
           <p className="text-slate-400">
@@ -237,7 +237,7 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
               value={summaryText}
               onChange={(e) => setSummaryText(e.target.value)}
               placeholder="Enter the article summary to use as the subtitle correction reference."
-              className="w-full h-80 bg-black/40 border border-white/10 rounded-2xl p-5 text-sm focus:border-primary outline-none transition-all text-white resize-none leading-relaxed"
+              className="w-full h-80 bg-slate-950 border border-white/10 rounded-2xl p-5 text-sm focus:border-primary outline-none transition-colors text-white resize-none leading-relaxed"
               disabled={isProcessing}
             />
 
@@ -262,7 +262,7 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
                   value={refinedContent}
                   onChange={(e) => setRefinedContent(e.target.value)}
                   placeholder="교정된 SRT 내용이 여기에 표시됩니다."
-                  className="w-full h-96 bg-black/40 border border-emerald-500/30 rounded-2xl p-5 text-sm focus:border-emerald-400 outline-none transition-all text-white resize-y leading-relaxed font-mono"
+                  className="w-full h-96 bg-slate-950 border border-emerald-500/30 rounded-2xl p-5 text-sm focus:border-emerald-400 outline-none transition-colors text-white resize-y leading-relaxed font-mono"
                   disabled={isSavingContent}
                 />
                 <p className="text-xs text-slate-400">

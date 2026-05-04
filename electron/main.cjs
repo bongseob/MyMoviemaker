@@ -5,6 +5,7 @@ const { writeAppLog } = require('./lib/logger.cjs');
 const { createWindow } = require('./window.cjs');
 const { registerIpcHandlers } = require('./ipc/index.cjs');
 
+app.disableHardwareAcceleration();
 installProcessSafety(app);
 loadEnvironment(app);
 writeAppLog(app, 'main loaded', { isPackaged: app.isPackaged, appPath: app.getAppPath() });

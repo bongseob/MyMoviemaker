@@ -456,12 +456,12 @@ export default function App() {
 
       <main className="flex-1 flex overflow-hidden">
         {/* 기사 요약 뷰 */}
-        <div className={`w-full h-full ${mainView === 'articles' ? 'block' : 'hidden'}`}>
+        <div className={`w-full h-full min-h-0 overflow-hidden ${mainView === 'articles' ? 'block' : 'hidden'}`}>
           <ArticleSummarizer onResultChange={(res) => setArticleResult(res)} initialResult={articleResult} />
         </div>
 
         {/* 자막 교정 뷰 */}
-        <div className={`w-full h-full ${mainView === 'subtitles' ? 'block' : 'hidden'}`}>
+        <div className={`w-full h-full min-h-0 overflow-hidden ${mainView === 'subtitles' ? 'block' : 'hidden'}`}>
           <SubtitleRefiner initialSummary={articleResult?.summary} />
         </div>
 
