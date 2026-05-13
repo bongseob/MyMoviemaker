@@ -28,6 +28,9 @@
       "package.json",
       "dist/**/*",
       "electron/**/*.cjs",
+      "!node_modules/ffprobe-static/bin/darwin/**/*",
+      "!node_modules/ffprobe-static/bin/linux/**/*",
+      "!node_modules/ffprobe-static/bin/win32/ia32/**/*",
       "!electron/outputs/**/*"
     ],
     "win": {
@@ -45,7 +48,7 @@
     "asar": true,
     "asarUnpack": [
       "**/node_modules/ffmpeg-static/ffmpeg*",
-      "**/node_modules/ffprobe-static/bin/**/ffprobe*"
+      "**/node_modules/ffprobe-static/bin/win32/x64/ffprobe*"
     ]
   },
   "dependencies": {
