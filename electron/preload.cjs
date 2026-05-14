@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('electron', {
     exportVideo: (data) => ipcRenderer.invoke('export-video', data),
     onProgress: (callback) => ipcRenderer.on('export-progress', (event, value) => callback(value)),
     getPathForFile: (file) => webUtils.getPathForFile(file),
+    openAudioFile: (filePath) => ipcRenderer.invoke('open-audio-file', filePath),
     minimize: () => ipcRenderer.send('window-minimize'),
     close: () => ipcRenderer.send('window-close'),
     // YouTube Upload API

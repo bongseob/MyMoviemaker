@@ -41,27 +41,6 @@ function createUniqueFilePath(directory, fileName) {
     return candidate;
 }
 
-function findLatestSunoMp3(sunoDir) {
-    if (!fs.existsSync(sunoDir)) {
-        throw new Error(`Suno MP3 폴더를 찾을 수 없습니다: ${sunoDir}`);
-    }
-
-    const mp3Files = fs.readdirSync(sunoDir)
-        .filter((fileName) => path.extname(fileName).toLowerCase() === '.mp3')
-        .map((fileName) => {
-            const filePath = path.join(sunoDir, fileName);
-            const stat = fs.statSync(filePath);
-            return { filePath, mtimeMs: stat.mtimeMs };
-        })
-        .sort((a, b) => b.mtimeMs - a.mtimeMs);
-
-    if (mp3Files.length === 0) {
-        throw new Error(`Suno MP3 파일이 없습니다: ${sunoDir}`);
-    }
-
-    return mp3Files[0].filePath;
-}
-
 function registerSubtitleIpc({ ipcMain, app, isDev }) {
     ipcMain.handle('generate-srt-from-suno', async (event, data = {}) => {
         try {
@@ -70,9 +49,10 @@ function registerSubtitleIpc({ ipcMain, app, isDev }) {
             if (!apiKey) throw new Error('OPENAI_API_KEY가 설정되지 않았습니다.');
 
             const sunoDir = getOutputDir(app, isDev, 'suno');
-            const mp3Path = payload.mp3Path
-                ? assertExistingFile(payload.mp3Path, 'MP3 file', AUDIO_EXTENSIONS)
-                : findLatestSunoMp3(sunoDir);
+            if (!payload.mp3Path) {
+                throw new Error('MP3 파일을 먼저 선택해 주세요.');
+            }
+            const mp3Path = assertExistingFile(payload.mp3Path, 'MP3 file', AUDIO_EXTENSIONS);
             const outputPath = createUniqueFilePath(sunoDir, `${getDateBaseName()}.srt`);
             const model = process.env.OPENAI_TRANSCRIBE_MODEL || 'whisper-1';
             const openai = new OpenAI({ apiKey });
@@ -87,10 +67,11 @@ function registerSubtitleIpc({ ipcMain, app, isDev }) {
                 language: 'ko'
             });
 
-            fs.writeFileSync(outputPath, String(srtContent).trim() + '\n', 'utf8');
+            const generatedContent = String(srtContent).trim();
+            fs.writeFileSync(outputPath, generatedContent + '\n', 'utf8');
             event.sender.send('refine-status', `SRT 생성 완료: ${outputPath}`);
 
-            return { success: true, outputPath, sourcePath: mp3Path };
+            return { success: true, outputPath, sourcePath: mp3Path, data: { content: generatedContent } };
         } catch (error) {
             console.error('Error generating SRT from Suno MP3:', error);
             return { success: false, error: getErrorMessage(error) };

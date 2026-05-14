@@ -1,6 +1,7 @@
-const { BrowserWindow } = require('electron');
+const { BrowserWindow, shell } = require('electron');
 const path = require('path');
 const { getOutputDir } = require('../lib/paths.cjs');
+const { AUDIO_EXTENSIONS, assertExistingFile } = require('../lib/validation.cjs');
 
 function registerDialogIpc({ ipcMain, dialog, app, isDev }) {
     ipcMain.handle('select-files', async (_event, options) => {
@@ -24,6 +25,24 @@ function registerDialogIpc({ ipcMain, dialog, app, isDev }) {
         }
 
         return dialog.showSaveDialog(dialogOptions);
+    });
+
+    ipcMain.handle('open-audio-file', async (_event, filePath) => {
+        try {
+            const audioPath = assertExistingFile(filePath, 'Audio file', AUDIO_EXTENSIONS);
+            const errorMessage = await shell.openPath(audioPath);
+
+            if (errorMessage) {
+                return { success: false, error: errorMessage };
+            }
+
+            return { success: true };
+        } catch (error) {
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : String(error)
+            };
+        }
     });
 }
 

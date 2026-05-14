@@ -13,6 +13,7 @@ export interface ArticleSummary {
 
 interface ArticleSummarizerProps {
   onResultChange?: (result: ArticleSummary | null) => void;
+  onSunoGenerated?: (mp3Path: string) => void;
   initialResult?: ArticleSummary | null;
 }
 
@@ -35,7 +36,7 @@ const buildCopyText = (result: ArticleSummary) => {
   ].join('\n').trim();
 };
 
-export default function ArticleSummarizer({ onResultChange, initialResult }: ArticleSummarizerProps) {
+export default function ArticleSummarizer({ onResultChange, onSunoGenerated, initialResult }: ArticleSummarizerProps) {
   const [articleText, setArticleText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<ArticleSummary | null>(initialResult || null);
@@ -142,6 +143,9 @@ export default function ArticleSummarizer({ onResultChange, initialResult }: Art
       if (response.success) {
         const outputPath = response.outputPath ? `\n저장 위치: ${response.outputPath}` : '';
         setSunoStatus(`${response.message || 'Song generation completed.'}${outputPath}`);
+        if (response.outputPath) {
+          onSunoGenerated?.(response.outputPath);
+        }
       } else {
         setError(response.error || 'Failed to generate Suno song.');
         setSunoStatus(null);

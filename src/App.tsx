@@ -39,6 +39,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'images' | 'audio' | 'subtitles' | 'youtube'>('images');
   const [mainView, setMainView] = useState<'moviemaker' | 'articles' | 'subtitles'>('moviemaker');
   const [articleResult, setArticleResult] = useState<ArticleSummary | null>(null);
+  const [sunoMp3Path, setSunoMp3Path] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportSuccess, setExportSuccess] = useState(false);
@@ -458,12 +459,16 @@ export default function App() {
       <main className="flex-1 flex overflow-hidden">
         {/* 기사 요약 뷰 */}
         <div className={`w-full h-full min-h-0 overflow-hidden ${mainView === 'articles' ? 'block' : 'hidden'}`}>
-          <ArticleSummarizer onResultChange={(res) => setArticleResult(res)} initialResult={articleResult} />
+          <ArticleSummarizer
+            onResultChange={(res) => setArticleResult(res)}
+            onSunoGenerated={(mp3Path) => setSunoMp3Path(mp3Path)}
+            initialResult={articleResult}
+          />
         </div>
 
         {/* 자막 교정 뷰 */}
         <div className={`w-full h-full min-h-0 overflow-hidden ${mainView === 'subtitles' ? 'block' : 'hidden'}`}>
-          <SubtitleRefiner initialSummary={articleResult?.summary} />
+          <SubtitleRefiner initialSummary={articleResult?.summary} initialMp3Path={sunoMp3Path} />
         </div>
 
         {/* 동영상 메이커 뷰 */}

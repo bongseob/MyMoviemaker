@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
-import { Loader2, CheckCircle2, AlertCircle, FileText, Upload, Check, Captions, Save, Music, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Loader2, CheckCircle2, AlertCircle, FileText, Upload, Check, Captions, Save, Music, X, RotateCcw, Play } from 'lucide-react';
 
 interface SubtitleRefinerProps {
   initialSummary?: string;
+  initialMp3Path?: string | null;
 }
 
 const getErrorMessage = (error: unknown) => {
@@ -12,7 +13,7 @@ const getErrorMessage = (error: unknown) => {
 const electronUnavailableMessage =
   'Electron API is not available. Run `npm run electron:dev` and use the desktop app window, not the browser tab.';
 
-export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps) {
+export default function SubtitleRefiner({ initialSummary, initialMp3Path }: SubtitleRefinerProps) {
   const [srtPath, setSrtPath] = useState<string | null>(null);
   const [summaryText, setSummaryText] = useState(initialSummary || '');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -24,12 +25,24 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
   const [sourceAudioPath, setSourceAudioPath] = useState<string | null>(null);
   const [refinedContent, setRefinedContent] = useState('');
   const [isSavingContent, setIsSavingContent] = useState(false);
+  const appliedInitialMp3PathRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (initialSummary && !summaryText) {
       setSummaryText(initialSummary);
     }
   }, [initialSummary, summaryText]);
+
+  useEffect(() => {
+    if (initialMp3Path && initialMp3Path !== appliedInitialMp3PathRef.current) {
+      appliedInitialMp3PathRef.current = initialMp3Path;
+      setMp3Path(initialMp3Path);
+      setSourceAudioPath(null);
+      setSuccessPath(null);
+      setStatus('Suno MP3가 선택되었습니다.');
+      setError(null);
+    }
+  }, [initialMp3Path]);
 
   useEffect(() => {
     const electron = window.electron;
@@ -147,16 +160,19 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
     setSuccessPath(null);
     setSourceAudioPath(null);
     setRefinedContent('');
-    setStatus(mp3Path ? 'Preparing SRT generation from the selected MP3...' : 'Preparing SRT generation from the latest Suno MP3...');
+    if (!mp3Path) return;
+
+    setStatus('Preparing SRT generation from the selected MP3...');
 
     try {
       const response = await electron.generateSrtFromSuno({ mp3Path });
 
       if (response.success && response.outputPath) {
+        const data = response.data as { content?: string } | undefined;
         setSrtPath(response.outputPath);
         setSuccessPath(response.outputPath);
         setSourceAudioPath(response.sourcePath || null);
-        setRefinedContent('');
+        setRefinedContent(data?.content || '');
         setStatus('SRT generation completed.');
       } else {
         setError(response.error || 'Failed to generate SRT from Suno MP3.');
@@ -206,6 +222,26 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
     }
   };
 
+  const handleOpenMp3InExternalPlayer = async () => {
+    const electron = window.electron;
+    if (!electron) {
+      setError(electronUnavailableMessage);
+      return;
+    }
+
+    if (!mp3Path) return;
+    setError(null);
+
+    try {
+      const response = await electron.openAudioFile(mp3Path);
+      if (!response.success) {
+        setError(response.error || 'MP3 파일을 외부 플레이어로 열 수 없습니다.');
+      }
+    } catch (err: unknown) {
+      setError(`MP3 파일을 외부 플레이어로 열 수 없습니다. ${getErrorMessage(err)}`);
+    }
+  };
+
   return (
     <div className="subtitle-refiner-scroll h-full min-h-0 flex flex-col p-6 bg-background overflow-y-auto overscroll-contain">
       <div className="relative z-0 max-w-4xl w-full mx-auto space-y-8">
@@ -227,8 +263,9 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
                 <button
                   type="button"
                   onClick={() => setSummaryText(initialSummary)}
-                  className="text-[10px] text-primary hover:underline"
+                  className="px-3 py-2 rounded-lg bg-primary/15 border border-primary/35 text-xs font-bold text-primary hover:bg-primary/25 hover:border-primary/60 transition-colors flex items-center gap-2"
                 >
+                  <RotateCcw className="w-3.5 h-3.5" />
                   Reload Article Summary
                 </button>
               )}
@@ -246,7 +283,7 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
                 <div className="flex items-center justify-between gap-3">
                   <label className="text-sm font-semibold text-slate-300 uppercase tracking-widest flex items-center gap-2">
                     <FileText className="w-4 h-4 text-emerald-400" />
-                    Final SRT Review
+                    SRT Content Review
                   </label>
                   <button
                     type="button"
@@ -279,58 +316,68 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
                 Step 1. Generate SRT from MP3
               </label>
 
-              <button
-                type="button"
-                onClick={handleSelectMp3}
-                disabled={isProcessing || isGeneratingSrt}
+              <div
                 className={`w-full group relative overflow-hidden transition-all duration-300 ${
                   mp3Path
                     ? 'bg-indigo-500/10 border-indigo-500/50'
                     : 'bg-black/40 border-dashed border-2 border-white/10 hover:border-indigo-500/50 hover:bg-indigo-500/5'
-                } border rounded-2xl p-6 flex items-center gap-4 disabled:cursor-not-allowed disabled:opacity-60`}
+                } border rounded-2xl p-6 flex items-center gap-4 ${isProcessing || isGeneratingSrt ? 'opacity-60' : ''}`}
               >
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-transform group-hover:scale-110 ${
-                  mp3Path ? 'bg-indigo-500/20' : 'bg-white/5'
-                }`}>
-                  {mp3Path ? <Check className="w-6 h-6 text-indigo-300" /> : <Music className="w-6 h-6 text-slate-400" />}
-                </div>
-                <div className="min-w-0 flex-1 text-left">
-                  <p className="font-semibold text-white truncate">
-                    {mp3Path ? mp3Path.split(/[\\/]/).pop() : 'MP3 파일 직접 선택'}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    {mp3Path ? '선택한 MP3로 SRT를 생성합니다.' : '선택하지 않으면 최신 Suno MP3를 자동으로 사용합니다.'}
-                  </p>
-                </div>
+                <button
+                  type="button"
+                  onClick={handleSelectMp3}
+                  disabled={isProcessing || isGeneratingSrt}
+                  className="min-w-0 flex-1 flex items-center gap-4 text-left disabled:cursor-not-allowed"
+                >
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-transform group-hover:scale-110 ${
+                    mp3Path ? 'bg-indigo-500/20' : 'bg-white/5'
+                  }`}>
+                    {mp3Path ? <Check className="w-6 h-6 text-indigo-300" /> : <Music className="w-6 h-6 text-slate-400" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-white truncate">
+                      {mp3Path ? mp3Path.split(/[\\/]/).pop() : 'MP3 파일 직접 선택'}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {mp3Path ? '선택한 MP3로 SRT를 생성합니다.' : '선택하지 않으면 최신 Suno MP3를 자동으로 사용합니다.'}
+                    </p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (mp3Path) {
+                      void handleOpenMp3InExternalPlayer();
+                    }
+                  }}
+                  disabled={!mp3Path}
+                  className={`shrink-0 px-3 py-2 rounded-lg transition-colors text-xs font-bold inline-flex items-center gap-2 ${
+                    mp3Path
+                      ? 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-950/30'
+                      : 'bg-slate-700/70 text-slate-400 cursor-not-allowed'
+                  }`}
+                  aria-label="MP3 외부 플레이어로 재생"
+                >
+                  <Play className="w-4 h-4" />
+                  외부 재생
+                </button>
                 {mp3Path && (
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setMp3Path(null);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        setMp3Path(null);
-                      }
-                    }}
+                  <button
+                    type="button"
+                    onClick={() => setMp3Path(null)}
                     className="p-2 rounded-lg bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white"
                     aria-label="선택한 MP3 해제"
                   >
                     <X className="w-4 h-4" />
-                  </span>
+                  </button>
                 )}
-              </button>
-
+              </div>
               <button
                 type="button"
                 onClick={handleGenerateSrtFromSuno}
-                disabled={isProcessing || isGeneratingSrt}
+                disabled={isProcessing || isGeneratingSrt || !mp3Path}
                 className={`w-full py-5 rounded-2xl font-bold text-lg transition-all flex items-center justify-center gap-3 shadow-xl ${
-                  isProcessing || isGeneratingSrt
+                  isProcessing || isGeneratingSrt || !mp3Path
                     ? 'bg-slate-800 text-slate-500 cursor-not-allowed shadow-none'
                     : 'bg-indigo-600 hover:bg-indigo-500 text-white hover:shadow-indigo-500/20'
                 }`}
@@ -343,7 +390,7 @@ export default function SubtitleRefiner({ initialSummary }: SubtitleRefinerProps
                 ) : (
                   <>
                     <Captions className="w-6 h-6" />
-                    <span>Suno MP3로 SRT 생성</span>
+                    <span>MP3로 SRT 생성</span>
                   </>
                 )}
               </button>

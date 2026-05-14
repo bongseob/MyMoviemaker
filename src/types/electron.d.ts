@@ -91,6 +91,7 @@ interface ElectronApi {
   exportVideo: (data: ExportVideoPayload) => Promise<void>;
   onProgress: (callback: (value: number) => void) => void;
   getPathForFile: (file: File) => string;
+  openAudioFile: (filePath: string) => Promise<IpcResult>;
   minimize: () => void;
   close: () => void;
   youtubeSetupAuth: (config?: YoutubeAuthConfig) => Promise<IpcResult>;
