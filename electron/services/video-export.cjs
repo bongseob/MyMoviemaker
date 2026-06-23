@@ -125,22 +125,20 @@ function registerVideoExportIpc({ ipcMain, app, isDev }) {
                         console.log(`[Slide ${loopIndex}] Path: ${cleanPath} | Duration: ${slideDuration}`);    
         
                         if (slideDuration > 0) {    
-                            // Crucial: Set -framerate BEFORE input for loop    
-                            command = command.input(cleanPath).inputOptions([    
-                                '-loop 1',    
-                                `-t ${slideDuration}`,    
-                                '-framerate 25'    
-                            ]);    
-                            activeSlides.push(slide);    
-        
+                            // Fix: Remove -loop 1 and -t so zoompan works on 1 frame
+                            command = command.input(cleanPath).inputOptions([    
+                                '-framerate 25'    
+                            ]);    
+                            activeSlides.push(slide);    
+        
                             const dFrames = Math.floor(slideDuration * 25);
                             let zoompanFilter = '';
                             if (loopIndex % 2 === 0) {
-                                // Zoom in
+                                // Zoom in: starts at 1, increases by 0.0015
                                 zoompanFilter = `zoompan=z='min(zoom+0.0015,1.5)':d=${dFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${resolution}:fps=25`;
                             } else {
-                                // Zoom out or pan
-                                zoompanFilter = `zoompan=z='max(1.5-0.0015*in,1)':d=${dFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${resolution}:fps=25`;
+                                // Zoom out: starts at 1.5, decreases by 0.0015
+                                zoompanFilter = `zoompan=z='if(eq(on,1),1.5,max(1,zoom-0.0015))':d=${dFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${resolution}:fps=25`;
                             }
                             
                             const fadeFilter = `fade=t=in:st=0:d=0.5,fade=t=out:st=${Math.max(0, slideDuration - 0.5)}:d=0.5`;
