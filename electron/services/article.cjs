@@ -45,6 +45,7 @@ const DEFAULT_PROMPTS = {
     [연주회/행사 기사 작성 규칙]
     - 일시, 장소, 예매정보 등 행사 핵심 정보를 강조한다.
     - 독자의 참여를 유도하는 긍정적인 문체를 사용한다.
+    - 리드문, 공연 개요, 프로그램 소개, 연주자 소개, 연주자 코멘트, 관람 정보 순서로 기사 본문을 작성한다.
 `.trim()
 };
 
@@ -87,6 +88,7 @@ function getPromptByType(articleType, articleText, promptsObject) {
     - 기사 내용은 반드시 제공된 보도자료 내용만 사용한다
     - 새로운 사실이나 추측을 추가하지 않는다
     - 문장을 자연스럽게 다듬는 것만 허용된다
+    - 제공된 자료에서 신문 기사에 부적절한 사항은 제외시켜 주고, 그 이유를 별도의 항목(exclusionReasons)으로 설명하라.
 
     [출력 형식 (JSON 객체의 Key)]
     - "title": [제목]
@@ -96,6 +98,7 @@ function getPromptByType(articleType, articleText, promptsObject) {
     - "content": [기사내용]
     - "copyText": [제목, 소주제, 해시태그를 복사하기 좋게 정리한 단일 문자열]
     - "revisionNotes": [수정 내역 배열]
+    - "exclusionReasons": [신문 기사에 부적절하여 제외시킨 내용과 그 이유를 설명하는 문자열 배열]
 
 ${typeSpecificRules}
 
