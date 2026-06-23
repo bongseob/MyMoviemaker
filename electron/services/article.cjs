@@ -24,34 +24,57 @@ function buildCopyText(articleData) {
     ].join('\n').trim();
 }
 
-function getPromptByType(articleType, articleText) {
-    let typeSpecificRules = '';
-    if (articleType === 'corporate') {
-        typeSpecificRules = `
-    [기업 홍보 기사 작성 규칙]
-    - 비즈니스 수치(매출, 성장률 등), 기업 성과, 제품명을 적극 부각한다.
-    - 트렌디하고 세련된 문체를 사용한다.
-`;
-    } else if (articleType === 'column') {
-        typeSpecificRules = `
-    [제도/칼럼 기사 작성 규칙]
-    - 현황-원인-대안의 논리적 구조를 갖춘다.
-    - 날카롭고 객관적인 문체를 사용한다.
-`;
-    } else if (articleType === 'event') {
-        typeSpecificRules = `
-    [연주회/행사 기사 작성 규칙]
-    - 일시, 장소, 예매정보 등 행사 핵심 정보를 강조한다.
-    - 독자의 참여를 유도하는 긍정적인 문체를 사용한다.
-`;
-    } else {
-        typeSpecificRules = `
+const DEFAULT_PROMPTS = {
+    gov: `
     [행정/구청 홍보 기사 작성 규칙]
     - 기관의 공익적 성과와 주민 체감 효과를 강조한다.
     - 행정 홍보 문체를 언론 기사 문체로 정리한다.
     - 신뢰감을 주는 단정하고 명확한 문체를 사용한다.
-`;
-    }
+`.trim(),
+    corporate: `
+    [기업 홍보 기사 작성 규칙]
+    - 비즈니스 수치(매출, 성장률 등), 기업 성과, 제품명을 적극 부각한다.
+    - 트렌디하고 세련된 문체를 사용한다.
+`.trim(),
+    column: `
+    [제도/칼럼 기사 작성 규칙]
+    - 현황-원인-대안의 논리적 구조를 갖춘다.
+    - 날카롭고 객관적인 문체를 사용한다.
+`.trim(),
+    event: `
+    [연주회/행사 기사 작성 규칙]
+    - 일시, 장소, 예매정보 등 행사 핵심 정보를 강조한다.
+    - 독자의 참여를 유도하는 긍정적인 문체를 사용한다.
+`.trim()
+};
+
+function getPromptManager(app) {
+    const userDataPath = app.getPath('userData');
+    const promptsFilePath = path.join(userDataPath, 'prompts.json');
+
+    const loadPrompts = () => {
+        try {
+            if (fs.existsSync(promptsFilePath)) {
+                const data = fs.readFileSync(promptsFilePath, 'utf-8');
+                return JSON.parse(data);
+            }
+        } catch (err) {
+            console.error('Failed to load prompts, using defaults:', err);
+        }
+        // Save defaults if not exists
+        fs.writeFileSync(promptsFilePath, JSON.stringify(DEFAULT_PROMPTS, null, 2), 'utf-8');
+        return { ...DEFAULT_PROMPTS };
+    };
+
+    const savePrompts = (newPrompts) => {
+        fs.writeFileSync(promptsFilePath, JSON.stringify(newPrompts, null, 2), 'utf-8');
+    };
+
+    return { loadPrompts, savePrompts };
+}
+
+function getPromptByType(articleType, articleText, promptsObject) {
+    const typeSpecificRules = promptsObject[articleType] || promptsObject['gov'] || '';
 
     return `
     당신은 20년 경력의 인터넷신문 편집기자이다.
@@ -132,11 +155,18 @@ ${typeSpecificRules}
 }
 
 function registerArticleIpc({ ipcMain, app, isDev }) {
+    const promptManager = getPromptManager(app);
+
+    ipcMain.handle('get-prompts', () => {
+        return promptManager.loadPrompts();
+    });
+
+    ipcMain.handle('save-prompts', (event, newPrompts) => {
+        promptManager.savePrompts(newPrompts);
+        return { success: true };
+    });
+
     // --- OpenAI Article Summarizer ---
-
-
-
-
 
     ipcMain.handle('process-article', async (event, payload) => {
         try {
@@ -149,55 +179,32 @@ function registerArticleIpc({ ipcMain, app, isDev }) {
             }
 
             const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-
-
-
             const openai = new OpenAI({ apiKey });
 
-
-
-            const prompt = getPromptByType(articleType, articleText);
-
+            const currentPrompts = promptManager.loadPrompts();
+            const prompt = getPromptByType(articleType, articleText, currentPrompts);
 
             const response = await openai.chat.completions.create({
-
                 model: model,
-
                 messages: [{ role: 'user', content: prompt }],
-
                 response_format: { type: "json_object" }
-
             });
 
-
-
             const jsonString = response.choices[0].message.content;
-
             const parsedJson = JSON.parse(jsonString);
             parsedJson.copyText = buildCopyText(parsedJson);
             if (!Array.isArray(parsedJson.revisionNotes)) {
                 parsedJson.revisionNotes = [];
             }
 
-
             // Auto-save logic
-
             const baseDir = getOutputDir(app, isDev, 'articles');
-
-
             const date = new Date();
-
             const timestamp = date.toISOString().replace(/[:.]/g, '').replace('T', '_').slice(0, 15);
-
             const filename = `article_${timestamp}.json`;
-
             const filePath = path.join(baseDir, filename);
 
-
-
             fs.writeFileSync(filePath, JSON.stringify(parsedJson, null, 2), 'utf-8');
-
-
 
             return { success: true, data: parsedJson, savedPath: filePath };
 
@@ -207,12 +214,7 @@ function registerArticleIpc({ ipcMain, app, isDev }) {
         }
     });
 
-
     // --- Playwright Article Publisher ---
-
-
-
-
 
     ipcMain.handle('publish-article', async (event, articleData) => {
         try {
@@ -220,223 +222,116 @@ function registerArticleIpc({ ipcMain, app, isDev }) {
             const adminId = process.env.ADMIN_USER_ID;
             const adminPw = process.env.ADMIN_USER_PW;
 
-
             if (!adminId || !adminPw || adminId === 'your_admin_id') {
-
                 throw new Error('관리자 아이디 또는 비밀번호가 .env 파일에 설정되지 않았습니다. .env 파일을 확인해 주세요.');
-
             }
 
-
-
             event.sender.send('publish-status', '브라우저를 열고 있습니다...');
-
             const browser = await chromium.launch({ headless: false }); // 과정을 보여주기 위해 창을 띄움
-
             const context = await browser.newContext();
-
             const page = await context.newPage();
 
-
-
             event.sender.send('publish-status', '로그인 페이지에 접속 중입니다...');
-
             await page.goto('https://www.d-maker.kr/admin/adminLoginForm.html');
 
-
-
             event.sender.send('publish-status', '로그인을 시도합니다...');
-
             await page.fill('#user_id', adminId);
-
             await page.fill('#user_pw', adminPw);
 
-
-
             // 로그인 제출 후 페이지 이동 대기
-
             await Promise.all([
-
                 page.waitForNavigation(),
-
                 page.click('button[type="submit"]')
-
             ]);
-
-
 
             event.sender.send('publish-status', '로그인 완료! 기사 등록 페이지로 이동합니다...');
 
-
-
             // 3. 왼쪽 메뉴의 "기사등록" 누르기 (혹은 직접 URL 이동)
-
             // 안전하게 URL로 직접 이동 (혹은 UI 클릭)
-
             await page.goto('https://www.d-maker.kr/news/adminArticleWriteForm.html?mode=input');
-
             await page.waitForLoadState('networkidle');
-
-
 
             event.sender.send('publish-status', '기사 등록 폼에 내용을 채우고 있습니다...');
 
-
-
             // 4. 데이터 입력
-
             // 4-0. 1차 섹션 "뉴스" 자동 선택 (값: S1N1)
-
             await page.selectOption('#sectionCode', 'S1N1');
 
-
-
             // 4-1. 기사 제목
-
             if (articleData.title) {
-
                 await page.fill('#title', articleData.title);
-
             }
-
-
 
             // 4-2. 부제목 (소주제 배열을 줄바꿈으로 연결하여 입력, 각 항목 앞에 '- ' 추가)
-
             if (articleData.subtopics && articleData.subtopics.length > 0) {
-
                 const subTitleText = articleData.subtopics.map(t => `- ${t}`).join('\n');
-
                 await page.fill('#subTitle', subTitleText);
-
             }
-
-
 
             // 4-3. 키워드 (# 제외하고 하나씩 입력 후 스페이스바) - 먼저 입력
-
             if (articleData.hashtags && articleData.hashtags.length > 0) {
-
                 const tagInputSelector = '.tagit-new input.ui-autocomplete-input';
-
                 await page.waitForSelector(tagInputSelector, { state: 'visible' });
 
-
-
                 for (let tag of articleData.hashtags) {
-
                     const cleanTag = tag.replace(/^#/, '').trim();
-
                     if (cleanTag) {
-
                         await page.fill(tagInputSelector, cleanTag);
-
                         await page.press(tagInputSelector, 'Space');
-
                         await page.waitForTimeout(100); // UI 반영 대기
-
                     }
-
                 }
-
             }
 
-
-
             // 4-4. 기사내용 (CKEditor 텍스트 붙여넣기 팝업 활용) - 가장 마지막에 입력
-
             if (articleData.content) {
-
                 // 에디터가 완전히 로드되어 버튼이 활성화될 때까지 대기
-
                 await page.waitForSelector('.cke_button__pastetext:not(.cke_button_disabled)', { state: 'visible', timeout: 15000 });
 
-
-
                 // "텍스트로 붙여넣기" 버튼 클릭
-
                 await page.click('.cke_button__pastetext');
 
-
-
                 // 팝업 창의 iframe 대기 (cke_pasteframe 클래스 사용)
-
                 await page.waitForSelector('.cke_pasteframe', { state: 'visible' });
 
-
-
                 // iframe 내의 body 요소에 기사 내용만 붙여넣기 (요약 기사 제외)
-
                 // 엔터(줄바꿈) 값이 완벽하게 유지되도록 Playwright의 insertText(실제 붙여넣기 에뮬레이션) 사용
-
                 const pasteFrame = page.frameLocator('.cke_pasteframe');
-
                 await pasteFrame.locator('body').focus();
-
                 await page.keyboard.insertText(articleData.content);
 
-
-
                 // "확인" 버튼 클릭
-
                 try {
-
                     await page.click('.cke_dialog_ui_button_ok');
-
                 } catch (_e) {
                     // 클릭 실패시 최후의 수단으로 title 기반 클릭
                     await page.locator('.cke_dialog a[title="확인"]').click();
                 }
 
-
                 // 팝업이 닫힐 때까지 잠시 대기
-
                 await page.waitForSelector('.cke_pasteframe', { state: 'hidden' });
-
                 await page.waitForTimeout(500); // UI 반영 대기
-
             }
-
-
 
             event.sender.send('publish-status', '내용 입력 완료! 저장 버튼을 클릭합니다...');
 
-
-
             // 저장 시 나타나는 alert 창(예: "등록되었습니다")을 자동으로 수락하도록 핸들러 등록
-
             page.once('dialog', async dialog => {
-
                 console.log('Dialog message:', dialog.message());
-
                 await dialog.accept();
-
             });
 
-
-
             // 5. 저장하기 버튼 클릭
-
             await page.click('button[type="submit"].nd-pink');
 
-
-
             // 페이지 이동 또는 저장이 완료될 때까지 잠시 대기
-
             await page.waitForTimeout(3000);
 
-
-
             event.sender.send('publish-status', '기사 등록이 완료되었습니다!');
-
             // 브라우저를 닫지 않고 유지 (사용자가 등록된 기사를 직접 확인할 수 있도록 함)
-
             // await browser.close();
 
-
-
             return { success: true, message: '어드민 페이지에 기사가 성공적으로 자동 등록되었습니다.' };
-
         } catch (error) {
             console.error('Error publishing article:', error);
             return { success: false, error: getErrorMessage(error) };

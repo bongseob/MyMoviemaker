@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect, useCallback } from 'react';
 import ArticleSummarizer, { type ArticleSummary } from './components/ArticleSummarizer';
 import SubtitleRefiner from './components/SubtitleRefiner';
+import PromptSettingsModal from './components/PromptSettingsModal';
 import {
   Plus,
   Settings,
@@ -56,6 +57,7 @@ export default function App() {
   const [ytUploadProgress, setYtUploadProgress] = useState(0);
   const [ytUploadSuccess, setYtUploadSuccess] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isPromptSettingsOpen, setIsPromptSettingsOpen] = useState(false);
   const [titleText, setTitleText] = useState('');
   const [titlePosition, setTitlePosition] = useState<'top' | 'center' | 'bottom'>('center');
   const [targetDuration, setTargetDuration] = useState(15);
@@ -418,6 +420,14 @@ export default function App() {
           )}
         </div>
         <div className="flex items-center gap-2 no-drag">
+          <button
+            onClick={() => setIsPromptSettingsOpen(true)}
+            className="text-slate-400 hover:text-white hover:bg-white/5 p-1 rounded transition-all"
+            title="Prompt Settings"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
+          <div className="h-4 w-[1px] bg-white/10 mx-1" />
           {mainView === 'moviemaker' && project && (
             <>
               <button className="text-slate-400 hover:text-white transition-colors p-1">
@@ -457,6 +467,8 @@ export default function App() {
       </header>
 
       <main className="flex-1 flex overflow-hidden">
+        <PromptSettingsModal isOpen={isPromptSettingsOpen} onClose={() => setIsPromptSettingsOpen(false)} />
+        
         {/* 기사 요약 뷰 */}
         <div className={`w-full h-full min-h-0 overflow-hidden ${mainView === 'articles' ? 'block' : 'hidden'}`}>
           <ArticleSummarizer
