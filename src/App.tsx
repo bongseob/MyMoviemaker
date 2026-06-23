@@ -76,6 +76,33 @@ export default function App() {
     }
   }, []);
 
+  // Data mapping from Article/Subtitle to Movie Maker defaults
+  useEffect(() => {
+    if (sunoMp3Path) {
+      setAudioPath(sunoMp3Path);
+    }
+  }, [sunoMp3Path]);
+
+  useEffect(() => {
+    if (articleResult) {
+      if (articleResult.title) {
+        setYtTitle(articleResult.title);
+      }
+      if (articleResult.copyText) {
+        setYtDescription(articleResult.copyText);
+      } else {
+        const builtText = [
+          articleResult.title,
+          '',
+          ...(articleResult.subtopics || []).map((item) => `- ${item}`),
+          '',
+          (articleResult.hashtags || []).join(' ')
+        ].join('\n').trim();
+        setYtDescription(builtText);
+      }
+    }
+  }, [articleResult]);
+
   // Global Drag and Drop Handlers
   const handleGlobalDrag = useCallback((e: DragEvent) => {
     e.preventDefault();
@@ -480,7 +507,11 @@ export default function App() {
 
         {/* 자막 교정 뷰 */}
         <div className={`w-full h-full min-h-0 overflow-hidden ${mainView === 'subtitles' ? 'block' : 'hidden'}`}>
-          <SubtitleRefiner initialSummary={articleResult?.summary} initialMp3Path={sunoMp3Path} />
+          <SubtitleRefiner 
+            initialSummary={articleResult?.summary} 
+            initialMp3Path={sunoMp3Path} 
+            onSrtGenerated={(srtPath) => setSubtitlePath(srtPath)}
+          />
         </div>
 
         {/* 동영상 메이커 뷰 */}

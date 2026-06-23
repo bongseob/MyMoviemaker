@@ -4,6 +4,7 @@ import { Loader2, CheckCircle2, AlertCircle, FileText, Upload, Check, Captions, 
 interface SubtitleRefinerProps {
   initialSummary?: string;
   initialMp3Path?: string | null;
+  onSrtGenerated?: (srtPath: string) => void;
 }
 
 const getErrorMessage = (error: unknown) => {
@@ -13,7 +14,7 @@ const getErrorMessage = (error: unknown) => {
 const electronUnavailableMessage =
   'Electron API is not available. Run `npm run electron:dev` and use the desktop app window, not the browser tab.';
 
-export default function SubtitleRefiner({ initialSummary, initialMp3Path }: SubtitleRefinerProps) {
+export default function SubtitleRefiner({ initialSummary, initialMp3Path, onSrtGenerated }: SubtitleRefinerProps) {
   const [srtPath, setSrtPath] = useState<string | null>(null);
   const [summaryText, setSummaryText] = useState(initialSummary || '');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -26,6 +27,12 @@ export default function SubtitleRefiner({ initialSummary, initialMp3Path }: Subt
   const [refinedContent, setRefinedContent] = useState('');
   const [isSavingContent, setIsSavingContent] = useState(false);
   const appliedInitialMp3PathRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (successPath && onSrtGenerated) {
+      onSrtGenerated(successPath);
+    }
+  }, [successPath, onSrtGenerated]);
 
   useEffect(() => {
     if (initialSummary && !summaryText) {
