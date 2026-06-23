@@ -18,7 +18,7 @@ contextBridge.exposeInMainWorld('electron', {
     youtubeUpload: (data) => ipcRenderer.invoke('youtube-upload', data),
     onYoutubeUploadProgress: (callback) => ipcRenderer.on('youtube-upload-progress', (event, value) => callback(value)),
     // Article Summarizer API
-    processArticle: (text) => ipcRenderer.invoke('process-article', text),
+    processArticle: (text, articleType) => ipcRenderer.invoke('process-article', { text, articleType }),
     publishArticle: (articleData) => ipcRenderer.invoke('publish-article', articleData),
     onPublishStatus: (callback) => {
         ipcRenderer.on('publish-status', (_event, status) => callback(status));

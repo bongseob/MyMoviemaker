@@ -38,6 +38,7 @@ const buildCopyText = (result: ArticleSummary) => {
 
 export default function ArticleSummarizer({ onResultChange, onSunoGenerated, initialResult }: ArticleSummarizerProps) {
   const [articleText, setArticleText] = useState('');
+  const [articleType, setArticleType] = useState('gov');
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<ArticleSummary | null>(initialResult || null);
   const [savedPath, setSavedPath] = useState<string | null>(null);
@@ -91,7 +92,7 @@ export default function ArticleSummarizer({ onResultChange, onSunoGenerated, ini
     setCopyStatus(null);
 
     try {
-      const response = await electron.processArticle(articleText);
+      const response = await electron.processArticle(articleText, articleType);
       if (response.success && response.data) {
         setResult(response.data);
         onResultChange?.(response.data);
@@ -180,7 +181,20 @@ export default function ArticleSummarizer({ onResultChange, onSunoGenerated, ini
         </header>
 
         <div className="space-y-4">
-          <label className="text-sm font-semibold text-slate-300 uppercase tracking-widest">&#44592;&#49324; &#50896;&#47928;</label>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <label className="text-sm font-semibold text-slate-300 uppercase tracking-widest">&#44592;&#49324; &#50896;&#47928;</label>
+            <select
+              value={articleType}
+              onChange={(e) => setArticleType(e.target.value)}
+              className="bg-black/40 border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:border-primary outline-none"
+              disabled={isProcessing || isPublishing}
+            >
+              <option value="gov">기관/구청 홍보</option>
+              <option value="corporate">기업 홍보</option>
+              <option value="column">제도/칼럼</option>
+              <option value="event">연주회/행사</option>
+            </select>
+          </div>
           <textarea
             value={articleText}
             onChange={(e) => setArticleText(e.target.value)}

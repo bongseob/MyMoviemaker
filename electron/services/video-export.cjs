@@ -133,10 +133,21 @@ function registerVideoExportIpc({ ipcMain, app, isDev }) {
                             ]);    
                             activeSlides.push(slide);    
         
-                            // Standardize each input with explicit fps    
-                            filters.push(`[${activeSlides.length - 1}:v]scale=${resolutionStr}:force_original_aspect_ratio=decrease,pad=${resolutionStr}:(ow-iw)/2:(oh-ih)/2,fps=25,setsar=1[v${activeSlides.length - 1}]`);    
-                                
-                            currentTime += slideDuration;    
+                            const dFrames = Math.floor(slideDuration * 25);
+                            let zoompanFilter = '';
+                            if (loopIndex % 2 === 0) {
+                                // Zoom in
+                                zoompanFilter = `zoompan=z='min(zoom+0.0015,1.5)':d=${dFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${resolution}:fps=25`;
+                            } else {
+                                // Zoom out or pan
+                                zoompanFilter = `zoompan=z='max(1.5-0.0015*in,1)':d=${dFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${resolution}:fps=25`;
+                            }
+                            
+                            const fadeFilter = `fade=t=in:st=0:d=0.5,fade=t=out:st=${Math.max(0, slideDuration - 0.5)}:d=0.5`;
+
+                            // Standardize each input with explicit fps and apply Ken Burns + fade    
+                            filters.push(`[${activeSlides.length - 1}:v]scale=${resolutionStr}:force_original_aspect_ratio=decrease,pad=${resolutionStr}:(ow-iw)/2:(oh-ih)/2,${zoompanFilter},setsar=1,${fadeFilter}[v${activeSlides.length - 1}]`);    
+currentTime += slideDuration;    
                         } else {    
                             break;    
                         }    
@@ -272,8 +283,9 @@ function registerVideoExportIpc({ ipcMain, app, isDev }) {
                 // 5. Final format conversion for compatibility    
                 filters.push(`[${finalVideoPin}]format=yuv420p[vout]`);    
         
-                if (audioPath) {    
-                    filters.push(`[${audioInputIndex}:a]anull[aout]`);    
+                if (audioPath) {    
+                    const fadeStart = Math.max(0, totalDuration - 2);
+                    filters.push(`[${audioInputIndex}:a]afade=t=out:st=${fadeStart}:d=2[aout]`);    
                 }    
         
                 command.complexFilter(filters.join('; ')).map('[vout]');    
