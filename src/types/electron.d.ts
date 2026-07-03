@@ -15,6 +15,7 @@ type SaveDialogOptions = {
   title?: string;
   defaultPath?: string;
   outputSection?: string;
+  autoIncrementExisting?: boolean;
   buttonLabel?: string;
   properties?: string[];
   filters?: DialogFilter[];
@@ -70,6 +71,12 @@ type YoutubeUploadPayload = {
   privacyStatus: 'public' | 'private' | 'unlisted';
 };
 
+type TiktokUploadPayload = {
+  videoPath: string;
+  caption: string;
+  autoPost: boolean;
+};
+
 type RefineSubtitlesPayload = {
   srtPath: string;
   summaryText: string;
@@ -109,6 +116,9 @@ interface ElectronApi {
   generateSunoSong: (articleData: ArticleSummary) => Promise<IpcResult>;
   onSunoStatus: (callback: (status: string) => void) => void;
   removeSunoStatusListener: () => void;
+  prepareTiktokUpload: (data: TiktokUploadPayload) => Promise<IpcResult>;
+  onTiktokStatus: (callback: (status: string) => void) => void;
+  removeTiktokStatusListener: () => void;
   generateSrtFromSuno: (data?: GenerateSrtPayload) => Promise<IpcResult & { sourcePath?: string }>;
   saveSrtContent: (data: SaveSrtContentPayload) => Promise<IpcResult>;
   refineSubtitles: (data: RefineSubtitlesPayload) => Promise<IpcResult>;

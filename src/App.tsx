@@ -37,7 +37,7 @@ export default function App() {
   const [project, setProject] = useState<Project | null>(null);
   const [slides, setSlides] = useState<Slide[]>([]);
   const [audioPath, setAudioPath] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'images' | 'audio' | 'subtitles' | 'youtube'>('images');
+  const [activeTab, setActiveTab] = useState<'images' | 'audio' | 'subtitles' | 'youtube' | 'tiktok'>('images');
   const [mainView, setMainView] = useState<'moviemaker' | 'articles' | 'subtitles'>('moviemaker');
   const [articleResult, setArticleResult] = useState<ArticleSummary | null>(null);
   const [sunoMp3Path, setSunoMp3Path] = useState<string | null>(null);
@@ -56,6 +56,12 @@ export default function App() {
   const [isYtUploading, setIsYtUploading] = useState(false);
   const [ytUploadProgress, setYtUploadProgress] = useState(0);
   const [ytUploadSuccess, setYtUploadSuccess] = useState(false);
+  const [tiktokVideoPath, setTiktokVideoPath] = useState<string | null>(null);
+  const [tiktokCaption, setTiktokCaption] = useState('');
+  const [tiktokAutoPost, setTiktokAutoPost] = useState(true);
+  const [isTiktokPreparing, setIsTiktokPreparing] = useState(false);
+  const [tiktokStatus, setTiktokStatus] = useState<string | null>(null);
+  const [tiktokReady, setTiktokReady] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isPromptSettingsOpen, setIsPromptSettingsOpen] = useState(false);
   const [titleText, setTitleText] = useState('');
@@ -65,6 +71,20 @@ export default function App() {
   const [subtitlePath, setSubtitlePath] = useState<string | null>(null);
   const [subtitleTextContent, setSubtitleTextContent] = useState('');
 
+  const applyYtVideoPath = (videoPath: string) => {
+    setYtVideoPath(videoPath);
+    setYtUploadSuccess(false);
+    if (!ytTitle) {
+      const fileName = videoPath.split(/[\\/]/).pop()?.replace(/\.[^/.]+$/, "") || "";
+      setYtTitle(fileName);
+    }
+  };
+
+  const applyTiktokVideoPath = (videoPath: string) => {
+    setTiktokVideoPath(videoPath);
+    setTiktokReady(false);
+  };
+
   useEffect(() => {
     if (window.electron) {
       window.electron.onProgress((percent: number) => {
@@ -73,7 +93,14 @@ export default function App() {
       window.electron.onYoutubeUploadProgress((percent: number) => {
         setYtUploadProgress(percent);
       });
+      window.electron.onTiktokStatus((status: string) => {
+        setTiktokStatus(status);
+      });
     }
+
+    return () => {
+      window.electron?.removeTiktokStatusListener();
+    };
   }, []);
 
   // Data mapping from Article/Subtitle to Movie Maker defaults
@@ -100,6 +127,13 @@ export default function App() {
         ].join('\n').trim();
         setYtDescription(builtText);
       }
+
+      const captionText = [
+        articleResult.title,
+        articleResult.summary,
+        (articleResult.hashtags || []).join(' ')
+      ].filter(Boolean).join('\n\n').slice(0, 2200);
+      setTiktokCaption(captionText);
     }
   }, [articleResult]);
 
@@ -204,8 +238,9 @@ export default function App() {
       title: 'Save Video',
       defaultPath: defaultFileName,
       outputSection: 'videos',
+      autoIncrementExisting: true,
       buttonLabel: 'Export',
-      properties: ['createDirectory', 'showOverwriteConfirmation'],
+      properties: ['createDirectory'],
       filters: [{ name: 'Video', extensions: ['mp4'] }]
     });
 
@@ -229,6 +264,8 @@ export default function App() {
         subtitleTextContent: subtitleTextContent
       });
       setExportSuccess(true);
+      applyYtVideoPath(result.filePath);
+      applyTiktokVideoPath(result.filePath);
     } catch (err: unknown) {
       console.error('Export failed:', err);
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -304,11 +341,19 @@ export default function App() {
     });
 
     if (!result.canceled && result.filePaths.length > 0) {
-      setYtVideoPath(result.filePaths[0]);
-      if (!ytTitle) {
-        const fileName = result.filePaths[0].split(/[\\/]/).pop()?.replace(/\.[^/.]+$/, "") || "";
-        setYtTitle(fileName);
-      }
+      applyYtVideoPath(result.filePaths[0]);
+    }
+  };
+
+  const handleSelectTiktokVideo = async () => {
+    if (!window.electron) return;
+    const result = await window.electron.selectFiles({
+      properties: ['openFile'],
+      filters: [{ name: 'Videos', extensions: ['mp4', 'mov', 'avi', 'mkv'] }]
+    });
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      applyTiktokVideoPath(result.filePaths[0]);
     }
   };
 
@@ -383,6 +428,39 @@ export default function App() {
       alert(`Upload failed: ${errorMessage}`);
     } finally {
       setIsYtUploading(false);
+    }
+  };
+
+  const handlePrepareTiktokUpload = async () => {
+    if (!window.electron) return;
+    if (!tiktokVideoPath) {
+      alert('TikTok에 업로드할 영상 파일을 선택해주세요.');
+      return;
+    }
+
+    setIsTiktokPreparing(true);
+    setTiktokReady(false);
+    setTiktokStatus('TikTok 업로드 준비를 시작합니다.');
+
+    try {
+      const response = await window.electron.prepareTiktokUpload({
+        videoPath: tiktokVideoPath,
+        caption: tiktokCaption,
+        autoPost: tiktokAutoPost
+      });
+
+      if (response.success) {
+        setTiktokReady(true);
+        setTiktokStatus(response.message || 'TikTok 업로드 화면 준비 완료');
+      } else {
+        alert(`TikTok upload failed: ${response.error || 'Unknown error'}`);
+      }
+    } catch (err: unknown) {
+      console.error('TikTok upload failed:', err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      alert(`TikTok upload failed: ${errorMessage}`);
+    } finally {
+      setIsTiktokPreparing(false);
     }
   };
 
@@ -578,6 +656,12 @@ export default function App() {
                     className={`flex-1 p-4 transition-colors flex justify-center ${activeTab === 'youtube' ? 'border-b-2 border-red-500 bg-red-500/10' : 'hover:bg-white/5'}`}
                   >
                     <Youtube className="w-5 h-5 text-red-500" />
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('tiktok')}
+                    className={`flex-1 p-4 transition-colors flex justify-center ${activeTab === 'tiktok' ? 'border-b-2 border-sky-400 bg-sky-400/10' : 'hover:bg-white/5'}`}
+                  >
+                    <UploadCloud className="w-5 h-5 text-sky-400" />
                   </button>
                 </div>
 
@@ -882,6 +966,90 @@ export default function App() {
                             </p>
                           )}
                         </div>
+                      )}
+                    </div>
+                  )}
+                  {activeTab === 'tiktok' && (
+                    <div className="space-y-5">
+                      <div className="space-y-2">
+                        <p className="text-xs text-slate-400">
+                          TikTok 업로드 페이지를 Playwright 브라우저로 열고, 영상 첨부와 캡션 입력까지 자동으로 준비합니다.
+                        </p>
+                        <p className="text-[10px] text-slate-500">
+                          첫 실행 시 로그인, 2단계 인증, 캡차는 열린 브라우저에서 직접 완료해주세요.
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={handleSelectTiktokVideo}
+                        className="w-full glass-card p-6 border-dashed border-2 border-white/10 flex flex-col items-center gap-3 hover:bg-white/10 transition-colors"
+                      >
+                        <div className="w-10 h-10 bg-sky-400/20 rounded-full flex items-center justify-center">
+                          <ImageIcon className="w-6 h-6 text-sky-400" />
+                        </div>
+                        <span className="text-sm font-medium">{tiktokVideoPath ? 'TikTok 영상 변경' : 'TikTok 업로드 영상 선택'}</span>
+                      </button>
+
+                      {tiktokVideoPath && (
+                        <div className="glass-card p-3 flex items-center gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-medium truncate">{tiktokVideoPath.split(/[\\/]/).pop()}</p>
+                          </div>
+                          <button onClick={() => setTiktokVideoPath(null)} className="text-slate-500 hover:text-red-400">
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        <label className="text-[10px] text-slate-500 uppercase tracking-widest">캡션</label>
+                        <textarea
+                          value={tiktokCaption}
+                          onChange={(e) => setTiktokCaption(e.target.value.slice(0, 2200))}
+                          placeholder="TikTok 캡션을 입력하세요"
+                          className="w-full h-36 bg-black/40 border border-white/10 rounded-lg p-3 text-sm focus:border-sky-400 outline-none transition-all text-white resize-none"
+                        />
+                        <p className="text-[10px] text-slate-500 text-right">{tiktokCaption.length}/2200</p>
+                      </div>
+
+                      <label className="flex items-start gap-3 glass-card p-3 cursor-pointer hover:bg-white/10 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={tiktokAutoPost}
+                          onChange={(e) => setTiktokAutoPost(e.target.checked)}
+                          className="mt-0.5"
+                        />
+                        <span className="space-y-1">
+                          <span className="block text-xs font-medium text-slate-200">게시 버튼까지 자동 클릭</span>
+                          <span className="block text-[10px] text-slate-500">
+                            기본값은 꺼짐입니다. 영상과 캡션을 확인한 뒤 TikTok 브라우저에서 직접 게시하는 방식을 권장합니다.
+                          </span>
+                        </span>
+                      </label>
+
+                      <button
+                        onClick={handlePrepareTiktokUpload}
+                        disabled={isTiktokPreparing || !tiktokVideoPath}
+                        className={`w-full p-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${isTiktokPreparing ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-sky-500 hover:bg-sky-600 text-white'
+                          }`}
+                      >
+                        {isTiktokPreparing ? (
+                          <>
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            <span>TIKTOK 준비 중</span>
+                          </>
+                        ) : (
+                          <>
+                            <UploadCloud className="w-5 h-5" />
+                            <span>{tiktokAutoPost ? 'TIKTOK 업로드 및 게시' : 'TIKTOK 업로드 준비'}</span>
+                          </>
+                        )}
+                      </button>
+
+                      {tiktokStatus && (
+                        <p className={`text-xs text-center whitespace-pre-wrap break-words ${tiktokReady ? 'text-emerald-400' : 'text-slate-400'}`}>
+                          {tiktokStatus}
+                        </p>
                       )}
                     </div>
                   )}

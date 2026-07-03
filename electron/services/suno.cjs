@@ -36,11 +36,23 @@ async function hasVisible(page, locator, timeout = 1500) {
 
 function sunoLyricsInputs(page) {
     return page.locator([
+        '[contenteditable="true"][aria-label*="Lyrics" i]',
+        '[contenteditable="true"][aria-label*="가사" i]',
+        '.lyrics-editor-content[contenteditable="true"]',
         '[data-testid*="lyrics-wrapper" i] textarea',
+        '[data-testid*="lyrics" i] textarea',
         '[data-testid="lyrics-textarea"]',
         '[data-testid="lyrics-input-textarea"]',
+        'textarea[name*="lyrics" i]',
+        'textarea[aria-label*="lyrics" i]',
+        'textarea[aria-label*="가사" i]',
+        'textarea[placeholder*="enter lyrics" i]',
+        'textarea[placeholder*="your lyrics" i]',
+        'textarea[placeholder*="own lyrics" i]',
         'textarea[placeholder*="write your rhymes" i]',
         'textarea[placeholder*="lyrics" i]',
+        'textarea[placeholder*="가사" i]',
+        'textarea[placeholder*="직접" i]',
         'textarea[placeholder*="가사" i]'
     ].join(', '));
 }
@@ -48,17 +60,42 @@ function sunoLyricsInputs(page) {
 function sunoStyleInputs(page) {
     return page.locator([
         '[data-testid*="styles-wrapper" i] textarea',
+        '[data-testid*="style" i] textarea',
         '[data-testid="tag-input-textarea"]',
+        'textarea[name*="style" i]',
         '[placeholder="Style of Music" i]',
+        'textarea[placeholder*="describe a style" i]',
+        'textarea[placeholder*="style of music" i]',
+        'textarea[placeholder*="math rock" i]',
+        'textarea[placeholder*="mandarin" i]',
+        'textarea[placeholder*="love ballad" i]',
         '[placeholder="음악 스타일" i]',
         'textarea[placeholder*="또렷한" i]',
         'textarea[placeholder*="orchestra" i]',
         'textarea[placeholder*="style" i]',
         'textarea[placeholder*="스타일" i]',
+        'textarea[placeholder*="장르" i]',
+        'textarea[placeholder*="스타일" i]',
         'textarea[placeholder*="인트로" i]',
         'textarea[aria-label*="Style" i]',
         'textarea[aria-label*="스타일" i]',
-        'textarea:not([data-testid="lyrics-textarea"]):not([data-testid="lyrics-input-textarea"]):not([placeholder*="lyrics" i]):not([placeholder*="가사" i]):not([placeholder*="write your rhymes" i]):not([placeholder*="Chat to make music" i])'
+        'textarea[aria-label*="장르" i]',
+        'textarea[aria-label*="스타일" i]',
+        'textarea:not([aria-label*="Cowriter" i]):not([data-testid="lyrics-textarea"]):not([data-testid="lyrics-input-textarea"]):not([placeholder*="lyrics" i]):not([placeholder*="가사" i]):not([placeholder*="write your rhymes" i]):not([placeholder*="Chat to make music" i])'
+    ].join(', '));
+}
+
+function sunoTitleInputs(page) {
+    return page.locator([
+        '[data-testid*="title-wrapper" i] input',
+        '[data-testid*="title" i] input',
+        'input[data-testid="title-input-textarea"]',
+        'input[name*="title" i]',
+        'input[aria-label*="title" i]',
+        'input[aria-label*="제목" i]',
+        'input[placeholder*="Song Title" i]',
+        'input[placeholder*="title" i]',
+        'input[placeholder*="제목" i]'
     ].join(', '));
 }
 
@@ -93,6 +130,7 @@ async function clickVisibleTextControl(page, pattern) {
             '[role="button"]',
             '[role="tab"]',
             '[role="switch"]',
+            '[aria-pressed]',
             'label',
             'a'
         ];
@@ -143,9 +181,10 @@ async function waitForSunoLogin(page, event) {
     throw new Error('시간 초과: Suno 로그인이 완료되지 않았습니다.');
 }
 
-async function ensureSunoAdvancedMode(page, event) {
+async function ensureSunoAdvancedMode(page, event, options = {}) {
     const lyricsInputs = sunoLyricsInputs(page);
     const styleInputs = sunoStyleInputs(page);
+    const manualTimeoutMs = options.manualTimeoutMs ?? 120000;
 
     if (await hasVisible(page, lyricsInputs, 2000) && await hasVisible(page, styleInputs, 2000)) {
         return;
@@ -160,6 +199,18 @@ async function ensureSunoAdvancedMode(page, event) {
         '[role="button"]:has-text("Custom")',
         '[role="tab"]:has-text("Custom")',
         'label:has-text("Custom")',
+        'button:has-text("Lyrics")',
+        '[role="button"]:has-text("Lyrics")',
+        '[role="tab"]:has-text("Lyrics")',
+        'label:has-text("Lyrics")',
+        'button:has-text("Write Lyrics")',
+        '[role="button"]:has-text("Write Lyrics")',
+        '[role="tab"]:has-text("Write Lyrics")',
+        'label:has-text("Write Lyrics")',
+        'button:has-text("Full Song")',
+        '[role="button"]:has-text("Full Song")',
+        'button:has-text("Song")',
+        '[role="button"]:has-text("Song")',
         'button:has-text("고급")',
         '[role="button"]:has-text("고급")',
         '[role="tab"]:has-text("고급")',
@@ -187,7 +238,7 @@ async function ensureSunoAdvancedMode(page, event) {
         }
     }
 
-    const clickedByText = await clickVisibleTextControl(page, /advanced|custom|고급|커스텀|맞춤/);
+    const clickedByText = await clickVisibleTextControl(page, /advanced|custom|lyrics|write lyrics|full song|song|고급|커스텀|맞춤|가사/);
     if (clickedByText) {
         await page.waitForTimeout(1500);
         if (await hasVisible(page, lyricsInputs, 3000) && await hasVisible(page, styleInputs, 3000)) {
@@ -195,8 +246,8 @@ async function ensureSunoAdvancedMode(page, event) {
         }
     }
 
-    event.sender.send('suno-status', 'Advanced 모드를 자동으로 찾지 못했습니다. Suno 창에서 Advanced/Custom 탭을 직접 선택해주세요.');
-    const deadline = Date.now() + 120000;
+    event.sender.send('suno-status', 'Advanced/Custom 또는 Lyrics 입력 모드를 자동으로 찾지 못했습니다. Suno 창에서 가사와 스타일 입력창이 보이도록 직접 선택해주세요.');
+    const deadline = Date.now() + manualTimeoutMs;
     while (Date.now() < deadline) {
         if (await hasVisible(page, lyricsInputs, 1000) && await hasVisible(page, styleInputs, 1000)) {
             return;
@@ -207,15 +258,25 @@ async function ensureSunoAdvancedMode(page, event) {
     throw new Error('Suno Advanced/Custom mode was not enabled, so lyrics/style inputs were not found.');
 }
 
-async function ensureSunoWriteLyricsMode(page, event) {
+async function ensureSunoWriteLyricsMode(page, event, options = {}) {
     const ownLyricsInput = page.locator([
+        '[contenteditable="true"][aria-label*="Lyrics" i]',
+        '[contenteditable="true"][aria-label*="가사" i]',
+        '.lyrics-editor-content[contenteditable="true"]',
         '[data-testid="lyrics-textarea"]',
+        '[data-testid*="lyrics" i] textarea',
         '[data-testid="lyrics-input-textarea"][placeholder*="own lyrics" i]',
         'textarea[placeholder*="own lyrics" i]',
+        'textarea[placeholder*="enter lyrics" i]',
+        'textarea[placeholder*="your lyrics" i]',
         'textarea[placeholder*="write your rhymes" i]',
+        'textarea[placeholder*="lyrics" i]',
+        'textarea[placeholder*="가사" i]',
+        'textarea[placeholder*="직접" i]',
         'textarea[placeholder*="직접" i]',
         'textarea[placeholder*="가사" i]'
     ].join(', '));
+    const manualTimeoutMs = options.manualTimeoutMs ?? 120000;
 
     if (await hasVisible(page, ownLyricsInput, 1500)) {
         return;
@@ -228,6 +289,15 @@ async function ensureSunoWriteLyricsMode(page, event) {
         'button:has-text("Manual")',
         '[role="button"]:has-text("Manual")',
         'label:has-text("Manual")',
+        'button:has-text("Enter Lyrics")',
+        '[role="button"]:has-text("Enter Lyrics")',
+        'label:has-text("Enter Lyrics")',
+        'button:has-text("My Lyrics")',
+        '[role="button"]:has-text("My Lyrics")',
+        'label:has-text("My Lyrics")',
+        'button:has-text("Lyrics")',
+        '[role="button"]:has-text("Lyrics")',
+        'label:has-text("Lyrics")',
         'button:has-text("직접")',
         '[role="button"]:has-text("직접")',
         'label:has-text("직접")',
@@ -253,7 +323,7 @@ async function ensureSunoWriteLyricsMode(page, event) {
         }
     }
 
-    const clickedByText = await clickVisibleTextControl(page, /write lyrics|manual|직접|가사 쓰기|수동/);
+    const clickedByText = await clickVisibleTextControl(page, /write lyrics|enter lyrics|my lyrics|lyrics|manual|직접|가사 쓰기|가사|수동/);
     if (clickedByText) {
         await page.waitForTimeout(1000);
         if (await hasVisible(page, ownLyricsInput, 2500)) {
@@ -261,8 +331,8 @@ async function ensureSunoWriteLyricsMode(page, event) {
         }
     }
 
-    event.sender.send('suno-status', 'Write Lyrics 모드를 자동으로 찾지 못했습니다. Suno 창에서 Write Lyrics를 직접 선택해주세요.');
-    const deadline = Date.now() + 120000;
+    event.sender.send('suno-status', 'Write Lyrics 모드를 자동으로 찾지 못했습니다. Suno 창에서 직접 가사 입력 모드를 선택해주세요.');
+    const deadline = Date.now() + manualTimeoutMs;
     while (Date.now() < deadline) {
         if (await hasVisible(page, ownLyricsInput, 1000)) {
             return;
@@ -275,9 +345,31 @@ async function ensureSunoWriteLyricsMode(page, event) {
 
 async function replaceInputText(page, locator, value) {
     await locator.scrollIntoViewIfNeeded();
+    const isEditable = await locator.evaluate((element) => element.getAttribute('contenteditable') === 'true').catch(() => false);
+    if (isEditable) {
+        await locator.focus();
+        await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+        await page.keyboard.press('Backspace');
+        await page.keyboard.insertText(value);
+        await locator.evaluate((element) => {
+            element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+            element.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        const text = await locator.evaluate((element) => element.textContent || '');
+        if (text === value) {
+            return;
+        }
+    }
+
     try {
         await locator.fill(value, { timeout: 5000 });
-        if (await locator.inputValue({ timeout: 1000 }) === value) {
+        const tagName = await locator.evaluate((element) => element.tagName.toLowerCase());
+        if (tagName === 'textarea' || tagName === 'input') {
+            if (await locator.inputValue({ timeout: 1000 }) === value) {
+                return;
+            }
+        }
+        if (!isEditable && tagName !== 'textarea' && tagName !== 'input') {
             return;
         }
     } catch (_e) {
@@ -310,6 +402,39 @@ function buildDateMp3FileName() {
     const dd = String(now.getDate()).padStart(2, '0');
 
     return `${yyyy}${mm}${dd}.mp3`;
+}
+
+async function clickSunoCreateButton(page) {
+    const selectors = [
+        'button[aria-label="Create song"]',
+        'button[aria-label*="Create song" i]',
+        'button:has-text("Create")',
+        'button:has-text("Generate")',
+        'button:has-text("생성")',
+        'button[aria-label*="Create" i]',
+        'button[aria-label*="Generate" i]',
+        'button[aria-label*="생성" i]'
+    ];
+
+    let createButton = null;
+    for (const selector of selectors) {
+        try {
+            createButton = await firstVisible(page, page.locator(selector), 1500);
+            break;
+        } catch (_error) {
+            // Try the next selector in priority order.
+        }
+    }
+    if (!createButton) {
+        throw new Error('Suno Create button was not found.');
+    }
+
+    await createButton.waitFor({ state: 'visible', timeout: 10000 });
+    const buttonHandle = await createButton.elementHandle();
+    await page.waitForFunction((element) => {
+        return !element.disabled && element.getAttribute('aria-disabled') !== 'true';
+    }, buttonHandle, { timeout: 10000 });
+    await createButton.click();
 }
 
 function registerSunoIpc({ ipcMain, app, isDev }) {
@@ -417,7 +542,7 @@ function registerSunoIpc({ ipcMain, app, isDev }) {
     
             */
             // 3. Fill Title
-            const titleInputs = page.locator('[data-testid*="title-wrapper" i] input, [data-testid="title-input-textarea"], [placeholder*="title" i], [placeholder*="제목" i]');
+            const titleInputs = sunoTitleInputs(page);
             if (articleData.title && await titleInputs.count() > 0) {
                 try {
                     const titleInput = await firstVisible(page, titleInputs, 5000);
@@ -431,7 +556,7 @@ function registerSunoIpc({ ipcMain, app, isDev }) {
             event.sender.send('suno-status', '노래 생성을 시작합니다! (약 2분 소요)');    
                 
             // Click Create button    
-            await page.click('button:has-text("Create")');    
+            await clickSunoCreateButton(page);
         
             // Wait for generation and download    
             // We look for the newly created track. Usually it's at the top of the list.    
@@ -514,4 +639,17 @@ function registerSunoIpc({ ipcMain, app, isDev }) {
     });
 }
 
-module.exports = { registerSunoIpc };
+module.exports = {
+    registerSunoIpc,
+    __test: {
+        firstVisible,
+        hasVisible,
+        sunoLyricsInputs,
+        sunoStyleInputs,
+        sunoTitleInputs,
+        ensureSunoAdvancedMode,
+        ensureSunoWriteLyricsMode,
+        replaceInputText,
+        clickSunoCreateButton
+    }
+};
