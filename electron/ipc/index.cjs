@@ -6,6 +6,7 @@ const { registerArticleIpc } = require('../services/article.cjs');
 const { registerSunoIpc } = require('../services/suno.cjs');
 const { registerSubtitleIpc } = require('../services/subtitle-refiner.cjs');
 const { registerTiktokIpc } = require('../services/tiktok.cjs');
+const { registerInstagramIpc } = require('../services/instagram.cjs');
 
 function registerIpcHandlers(deps) {
     registerDialogIpc(deps);
@@ -16,6 +17,7 @@ function registerIpcHandlers(deps) {
     registerSunoIpc(deps);
     registerSubtitleIpc(deps);
     registerTiktokIpc(deps);
+    registerInstagramIpc(deps);
 }
 
 module.exports = { registerIpcHandlers };

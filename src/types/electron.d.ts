@@ -77,6 +77,12 @@ type TiktokUploadPayload = {
   autoPost: boolean;
 };
 
+type InstagramUploadPayload = {
+  videoPath: string;
+  caption: string;
+  autoShare: boolean;
+};
+
 type RefineSubtitlesPayload = {
   srtPath: string;
   summaryText: string;
@@ -119,6 +125,9 @@ interface ElectronApi {
   prepareTiktokUpload: (data: TiktokUploadPayload) => Promise<IpcResult>;
   onTiktokStatus: (callback: (status: string) => void) => void;
   removeTiktokStatusListener: () => void;
+  prepareInstagramUpload: (data: InstagramUploadPayload) => Promise<IpcResult>;
+  onInstagramStatus: (callback: (status: string) => void) => void;
+  removeInstagramStatusListener: () => void;
   generateSrtFromSuno: (data?: GenerateSrtPayload) => Promise<IpcResult & { sourcePath?: string }>;
   saveSrtContent: (data: SaveSrtContentPayload) => Promise<IpcResult>;
   refineSubtitles: (data: RefineSubtitlesPayload) => Promise<IpcResult>;

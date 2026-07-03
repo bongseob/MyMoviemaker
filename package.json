@@ -13,6 +13,7 @@
     "electron:dev": "cross-env NODE_ENV=development wait-on http://localhost:5173 && electron electron/main.cjs",
     "electron:build": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win nsis --x64",
+    "dist:win:portable": "npm run build && electron-builder --win portable --x64",
     "dist:mac": "npm run build && electron-builder --mac dmg zip",
     "dist:mac:x64": "npm run build && electron-builder --mac dmg zip --x64",
     "dist:mac:arm64": "npm run build && electron-builder --mac dmg zip --arm64"

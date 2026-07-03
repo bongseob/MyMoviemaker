@@ -18,6 +18,7 @@ import {
   X,
   Minus,
   Youtube,
+  Instagram,
   ExternalLink
 } from 'lucide-react';
 
@@ -37,7 +38,7 @@ export default function App() {
   const [project, setProject] = useState<Project | null>(null);
   const [slides, setSlides] = useState<Slide[]>([]);
   const [audioPath, setAudioPath] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'images' | 'audio' | 'subtitles' | 'youtube' | 'tiktok'>('images');
+  const [activeTab, setActiveTab] = useState<'images' | 'audio' | 'subtitles' | 'youtube' | 'tiktok' | 'instagram'>('images');
   const [mainView, setMainView] = useState<'moviemaker' | 'articles' | 'subtitles'>('moviemaker');
   const [articleResult, setArticleResult] = useState<ArticleSummary | null>(null);
   const [sunoMp3Path, setSunoMp3Path] = useState<string | null>(null);
@@ -58,10 +59,16 @@ export default function App() {
   const [ytUploadSuccess, setYtUploadSuccess] = useState(false);
   const [tiktokVideoPath, setTiktokVideoPath] = useState<string | null>(null);
   const [tiktokCaption, setTiktokCaption] = useState('');
-  const [tiktokAutoPost, setTiktokAutoPost] = useState(true);
+  const [tiktokAutoPost, setTiktokAutoPost] = useState(false);
   const [isTiktokPreparing, setIsTiktokPreparing] = useState(false);
   const [tiktokStatus, setTiktokStatus] = useState<string | null>(null);
   const [tiktokReady, setTiktokReady] = useState(false);
+  const [instagramVideoPath, setInstagramVideoPath] = useState<string | null>(null);
+  const [instagramCaption, setInstagramCaption] = useState('');
+  const [instagramAutoShare, setInstagramAutoShare] = useState(false);
+  const [isInstagramPreparing, setIsInstagramPreparing] = useState(false);
+  const [instagramStatus, setInstagramStatus] = useState<string | null>(null);
+  const [instagramReady, setInstagramReady] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isPromptSettingsOpen, setIsPromptSettingsOpen] = useState(false);
   const [titleText, setTitleText] = useState('');
@@ -85,6 +92,11 @@ export default function App() {
     setTiktokReady(false);
   };
 
+  const applyInstagramVideoPath = (videoPath: string) => {
+    setInstagramVideoPath(videoPath);
+    setInstagramReady(false);
+  };
+
   useEffect(() => {
     if (window.electron) {
       window.electron.onProgress((percent: number) => {
@@ -96,10 +108,14 @@ export default function App() {
       window.electron.onTiktokStatus((status: string) => {
         setTiktokStatus(status);
       });
+      window.electron.onInstagramStatus((status: string) => {
+        setInstagramStatus(status);
+      });
     }
 
     return () => {
       window.electron?.removeTiktokStatusListener();
+      window.electron?.removeInstagramStatusListener();
     };
   }, []);
 
@@ -134,6 +150,7 @@ export default function App() {
         (articleResult.hashtags || []).join(' ')
       ].filter(Boolean).join('\n\n').slice(0, 2200);
       setTiktokCaption(captionText);
+      setInstagramCaption(captionText);
     }
   }, [articleResult]);
 
@@ -266,6 +283,7 @@ export default function App() {
       setExportSuccess(true);
       applyYtVideoPath(result.filePath);
       applyTiktokVideoPath(result.filePath);
+      applyInstagramVideoPath(result.filePath);
     } catch (err: unknown) {
       console.error('Export failed:', err);
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -354,6 +372,18 @@ export default function App() {
 
     if (!result.canceled && result.filePaths.length > 0) {
       applyTiktokVideoPath(result.filePaths[0]);
+    }
+  };
+
+  const handleSelectInstagramVideo = async () => {
+    if (!window.electron) return;
+    const result = await window.electron.selectFiles({
+      properties: ['openFile'],
+      filters: [{ name: 'Videos', extensions: ['mp4', 'mov', 'avi', 'mkv'] }]
+    });
+
+    if (!result.canceled && result.filePaths.length > 0) {
+      applyInstagramVideoPath(result.filePaths[0]);
     }
   };
 
@@ -461,6 +491,39 @@ export default function App() {
       alert(`TikTok upload failed: ${errorMessage}`);
     } finally {
       setIsTiktokPreparing(false);
+    }
+  };
+
+  const handlePrepareInstagramUpload = async () => {
+    if (!window.electron) return;
+    if (!instagramVideoPath) {
+      alert('Instagram에 업로드할 영상 파일을 선택해주세요.');
+      return;
+    }
+
+    setIsInstagramPreparing(true);
+    setInstagramReady(false);
+    setInstagramStatus('Instagram 업로드 준비를 시작합니다.');
+
+    try {
+      const response = await window.electron.prepareInstagramUpload({
+        videoPath: instagramVideoPath,
+        caption: instagramCaption,
+        autoShare: instagramAutoShare
+      });
+
+      if (response.success) {
+        setInstagramReady(true);
+        setInstagramStatus(response.message || 'Instagram 업로드 화면 준비 완료');
+      } else {
+        alert(`Instagram upload failed: ${response.error || 'Unknown error'}`);
+      }
+    } catch (err: unknown) {
+      console.error('Instagram upload failed:', err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      alert(`Instagram upload failed: ${errorMessage}`);
+    } finally {
+      setIsInstagramPreparing(false);
     }
   };
 
@@ -662,6 +725,12 @@ export default function App() {
                     className={`flex-1 p-4 transition-colors flex justify-center ${activeTab === 'tiktok' ? 'border-b-2 border-sky-400 bg-sky-400/10' : 'hover:bg-white/5'}`}
                   >
                     <UploadCloud className="w-5 h-5 text-sky-400" />
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('instagram')}
+                    className={`flex-1 p-4 transition-colors flex justify-center ${activeTab === 'instagram' ? 'border-b-2 border-pink-500 bg-pink-500/10' : 'hover:bg-white/5'}`}
+                  >
+                    <Instagram className="w-5 h-5 text-pink-500" />
                   </button>
                 </div>
 
@@ -1049,6 +1118,90 @@ export default function App() {
                       {tiktokStatus && (
                         <p className={`text-xs text-center whitespace-pre-wrap break-words ${tiktokReady ? 'text-emerald-400' : 'text-slate-400'}`}>
                           {tiktokStatus}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {activeTab === 'instagram' && (
+                    <div className="space-y-5">
+                      <div className="space-y-2">
+                        <p className="text-xs text-slate-400">
+                          Instagram 릴스 업로드 화면을 Playwright 브라우저로 열고, 영상 첨부와 캡션 입력까지 자동으로 준비합니다.
+                        </p>
+                        <p className="text-[10px] text-slate-500">
+                          첫 실행 시 로그인, 2단계 인증, 보안 확인은 열린 브라우저에서 직접 완료해주세요.
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={handleSelectInstagramVideo}
+                        className="w-full glass-card p-6 border-dashed border-2 border-white/10 flex flex-col items-center gap-3 hover:bg-white/10 transition-colors"
+                      >
+                        <div className="w-10 h-10 bg-pink-500/20 rounded-full flex items-center justify-center">
+                          <ImageIcon className="w-6 h-6 text-pink-500" />
+                        </div>
+                        <span className="text-sm font-medium">{instagramVideoPath ? 'Instagram 영상 변경' : 'Instagram 릴스 영상 선택'}</span>
+                      </button>
+
+                      {instagramVideoPath && (
+                        <div className="glass-card p-3 flex items-center gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-medium truncate">{instagramVideoPath.split(/[\\/]/).pop()}</p>
+                          </div>
+                          <button onClick={() => setInstagramVideoPath(null)} className="text-slate-500 hover:text-red-400">
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        <label className="text-[10px] text-slate-500 uppercase tracking-widest">캡션</label>
+                        <textarea
+                          value={instagramCaption}
+                          onChange={(e) => setInstagramCaption(e.target.value.slice(0, 2200))}
+                          placeholder="Instagram 캡션을 입력하세요"
+                          className="w-full h-36 bg-black/40 border border-white/10 rounded-lg p-3 text-sm focus:border-pink-500 outline-none transition-all text-white resize-none"
+                        />
+                        <p className="text-[10px] text-slate-500 text-right">{instagramCaption.length}/2200</p>
+                      </div>
+
+                      <label className="flex items-start gap-3 glass-card p-3 cursor-pointer hover:bg-white/10 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={instagramAutoShare}
+                          onChange={(e) => setInstagramAutoShare(e.target.checked)}
+                          className="mt-0.5"
+                        />
+                        <span className="space-y-1">
+                          <span className="block text-xs font-medium text-slate-200">공유 버튼까지 자동 클릭</span>
+                          <span className="block text-[10px] text-slate-500">
+                            기본값은 꺼짐입니다. 영상과 캡션을 확인한 뒤 Instagram 브라우저에서 직접 공유하는 방식을 권장합니다.
+                          </span>
+                        </span>
+                      </label>
+
+                      <button
+                        onClick={handlePrepareInstagramUpload}
+                        disabled={isInstagramPreparing || !instagramVideoPath}
+                        className={`w-full p-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${isInstagramPreparing ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-pink-500 hover:bg-pink-600 text-white'
+                          }`}
+                      >
+                        {isInstagramPreparing ? (
+                          <>
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            <span>INSTAGRAM 준비 중</span>
+                          </>
+                        ) : (
+                          <>
+                            <Instagram className="w-5 h-5" />
+                            <span>{instagramAutoShare ? 'INSTAGRAM 업로드 및 공유' : 'INSTAGRAM 업로드 준비'}</span>
+                          </>
+                        )}
+                      </button>
+
+                      {instagramStatus && (
+                        <p className={`text-xs text-center whitespace-pre-wrap break-words ${instagramReady ? 'text-emerald-400' : 'text-slate-400'}`}>
+                          {instagramStatus}
                         </p>
                       )}
                     </div>

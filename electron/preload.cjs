@@ -44,6 +44,14 @@ contextBridge.exposeInMainWorld('electron', {
     removeTiktokStatusListener: () => {
         ipcRenderer.removeAllListeners('tiktok-status');
     },
+    // Instagram Upload API
+    prepareInstagramUpload: (data) => ipcRenderer.invoke('prepare-instagram-upload', data),
+    onInstagramStatus: (callback) => {
+        ipcRenderer.on('instagram-status', (_event, status) => callback(status));
+    },
+    removeInstagramStatusListener: () => {
+        ipcRenderer.removeAllListeners('instagram-status');
+    },
     // Subtitle Refiner API
     generateSrtFromSuno: (data) => ipcRenderer.invoke('generate-srt-from-suno', data || {}),
     saveSrtContent: (data) => ipcRenderer.invoke('save-srt-content', data),
