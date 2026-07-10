@@ -4,6 +4,7 @@ const { OpenAI } = require('openai');
 const { getErrorMessage } = require('../lib/errors.cjs');
 const { getOutputDir } = require('../lib/paths.cjs');
 const { AUDIO_EXTENSIONS, SRT_EXTENSIONS, assertExistingFile, assertPlainObject, assertText } = require('../lib/validation.cjs');
+const { normalizeSrtSegments } = require('./subtitle-utils.cjs');
 
 function stripMarkdownFence(text) {
     const lines = String(text || '').trim().split(/\r?\n/);
@@ -67,7 +68,7 @@ function registerSubtitleIpc({ ipcMain, app, isDev }) {
                 language: 'ko'
             });
 
-            const generatedContent = String(srtContent).trim();
+            const generatedContent = normalizeSrtSegments(String(srtContent).trim());
             fs.writeFileSync(outputPath, generatedContent + '\n', 'utf8');
             event.sender.send('refine-status', `SRT 생성 완료: ${outputPath}`);
 
@@ -106,7 +107,7 @@ function registerSubtitleIpc({ ipcMain, app, isDev }) {
             const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';    
         
             event.sender.send('refine-status', '자막 파일을 읽고 있습니다...');    
-            const srtContent = fs.readFileSync(srtPath, 'utf8');    
+            const srtContent = normalizeSrtSegments(fs.readFileSync(srtPath, 'utf8'));
         
             // SRT 블록 분리    
             const blocks = srtContent.trim().split(/\n\s*\n/);    

@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const ffmpeg = require('fluent-ffmpeg');
 const { validateExportPayload } = require('../lib/validation.cjs');
+const { formatSrtTime, normalizeSrtSegments } = require('./subtitle-utils.cjs');
 
 function configureFfmpeg({ app, isDev }) {
     let ffmpegPath = require('ffmpeg-static');
@@ -44,14 +45,6 @@ function getAudioDuration(filePath) {
             else resolve(metadata.format.duration);
         });
     });
-}
-
-function formatSRTTime(seconds) {
-    const date = new Date(0);
-    date.setMilliseconds(seconds * 1000);
-    const timeStr = date.toISOString().substr(11, 8);
-    const ms = Math.floor((seconds % 1) * 1000).toString().padStart(3, '0');
-    return `${timeStr},${ms}`;
 }
 
 function escapeFfmpegFilterPath(filePath) {
@@ -258,11 +251,11 @@ currentTime += slideDuration;
                         lines.forEach((line, i) => {    
                             const start = i * segmentDuration;    
                             const end = (i + 1) * segmentDuration;    
-                            srtContent += `${i + 1}\n${formatSRTTime(start)} --> ${formatSRTTime(end)}\n${line}\n\n`;    
+                            srtContent += `${i + 1}\n${formatSrtTime(start)} --> ${formatSrtTime(end)}\n${line}\n\n`;
                         });    
         
                         tempSrtPath = path.join(app.getPath('temp'), `temp_sub_${Date.now()}.srt`);    
-                        fs.writeFileSync(tempSrtPath, srtContent, 'utf8');    
+                        fs.writeFileSync(tempSrtPath, normalizeSrtSegments(srtContent), 'utf8');
                         effectiveSubPath = tempSrtPath;    
                     }    
                 }    
