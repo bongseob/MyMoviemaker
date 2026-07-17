@@ -73,6 +73,7 @@ This file is the shared source of truth for this project. Any agent or human wor
   - `npm run lint`
   - Current lint may fail on pre-existing issues; report whether failures are related to the current change.
 - Windows portable build:
+  - See `docs/windows-portable-build.md` for the Windows PowerShell build steps.
   - Prefer the existing portable-build workflow or run `npm run build` followed by `npx electron-builder --win portable --x64`.
   - Keep or create a clearly named latest copy:
     - `release/AntigravityMovieMaker-0.0.0-windows-x64-portable-latest.exe`
