@@ -33,6 +33,7 @@ type SaveDialogResult = {
 
 type IpcResult<T = unknown> = {
   success?: boolean;
+  canceled?: boolean;
   error?: string;
   data?: T;
   savedPath?: string;
@@ -116,6 +117,7 @@ interface ElectronApi {
   getPrompts: () => Promise<{gov: string, corporate: string, column: string, event: string}>;
   savePrompts: (data: {gov: string, corporate: string, column: string, event: string}) => Promise<IpcResult>;
   processArticle: (text: string, articleType?: string) => Promise<IpcResult<ArticleSummary>>;
+  loadArticleResult: () => Promise<IpcResult<ArticleSummary>>;
   publishArticle: (articleData: ArticleSummary) => Promise<IpcResult>;
   onPublishStatus: (callback: (status: string) => void) => void;
   removePublishStatusListener: () => void;

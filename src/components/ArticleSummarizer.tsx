@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, FileJson, CheckCircle2, AlertCircle, Copy } from 'lucide-react';
+import { Loader2, FileJson, CheckCircle2, AlertCircle, Copy, FolderOpen } from 'lucide-react';
 
 export interface ArticleSummary {
   title: string;
@@ -9,6 +9,7 @@ export interface ArticleSummary {
   content: string;
   copyText?: string;
   revisionNotes?: string[];
+  exclusionReasons?: string[];
 }
 
 interface ArticleSummarizerProps {
@@ -40,6 +41,7 @@ export default function ArticleSummarizer({ onResultChange, onSunoGenerated, ini
   const [articleText, setArticleText] = useState('');
   const [articleType, setArticleType] = useState('gov');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<ArticleSummary | null>(initialResult || null);
   const [savedPath, setSavedPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -104,6 +106,35 @@ export default function ArticleSummarizer({ onResultChange, onSunoGenerated, ini
       setError(getErrorMessage(err));
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleLoadResult = async () => {
+    const electron = window.electron;
+    if (!electron) {
+      setError(electronUnavailableMessage);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    setPublishStatus(null);
+    setSunoStatus(null);
+    setCopyStatus(null);
+
+    try {
+      const response = await electron.loadArticleResult();
+      if (response.success && response.data) {
+        setResult(response.data);
+        setSavedPath(response.savedPath || null);
+        onResultChange?.(response.data);
+      } else if (!response.canceled) {
+        setError(response.error || '기사 JSON 파일을 불러오지 못했습니다.');
+      }
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -187,7 +218,7 @@ export default function ArticleSummarizer({ onResultChange, onSunoGenerated, ini
               value={articleType}
               onChange={(e) => setArticleType(e.target.value)}
               className="bg-black/40 border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:border-primary outline-none"
-              disabled={isProcessing || isPublishing}
+              disabled={isProcessing || isLoading || isPublishing}
             >
               <option value="gov">기관/구청 홍보</option>
               <option value="corporate">기업 홍보</option>
@@ -200,32 +231,42 @@ export default function ArticleSummarizer({ onResultChange, onSunoGenerated, ini
             onChange={(e) => setArticleText(e.target.value)}
             placeholder="&#50668;&#44592;&#50640; &#44592;&#49324; &#45236;&#50857;&#51012; &#48537;&#50668;&#45347;&#51004;&#49464;&#50836;..."
             className="w-full h-64 bg-black/40 border border-white/10 rounded-xl p-4 text-sm focus:border-primary outline-none transition-all text-white resize-none"
-            disabled={isProcessing || isPublishing}
+            disabled={isProcessing || isLoading || isPublishing}
           />
         </div>
 
-        <button
-          type="button"
-          onClick={handleProcess}
-          disabled={isProcessing || isPublishing || !articleText.trim()}
-          className={`w-full py-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
-            isProcessing || isPublishing || !articleText.trim()
-              ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-              : 'bg-primary hover:bg-primary/80 text-white'
-          }`}
-        >
-          {isProcessing ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              <span>AI &#48516;&#49437; &#48143; &#51200;&#51109; &#51473;...</span>
-            </>
-          ) : (
-            <>
-              <FileJson className="w-5 h-5" />
-              <span>JSON &#48320;&#54872; &#48143; &#51088;&#46041; &#51200;&#51109;</span>
-            </>
-          )}
-        </button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={handleProcess}
+            disabled={isProcessing || isLoading || isPublishing || !articleText.trim()}
+            className={`w-full py-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
+              isProcessing || isLoading || isPublishing || !articleText.trim()
+                ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                : 'bg-primary hover:bg-primary/80 text-white'
+            }`}
+          >
+            {isProcessing ? (
+              <><Loader2 className="w-5 h-5 animate-spin" /><span>AI &#48516;&#49437; &#48143; &#51200;&#51109; &#51473;...</span></>
+            ) : (
+              <><FileJson className="w-5 h-5" /><span>JSON &#48320;&#54872; &#48143; &#51088;&#46041; &#51200;&#51109;</span></>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleLoadResult}
+            disabled={isProcessing || isLoading || isPublishing}
+            className={`w-full py-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${
+              isProcessing || isLoading || isPublishing
+                ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                : 'bg-slate-700 hover:bg-slate-600 text-white'
+            }`}
+          >
+            {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <FolderOpen className="w-5 h-5" />}
+            <span>{isLoading ? '불러오는 중...' : '저장된 JSON 불러오기'}</span>
+          </button>
+        </div>
 
         {error && (
           <div className="p-4 bg-red-500/20 border border-red-500/50 rounded-xl flex items-start gap-3 text-red-400">

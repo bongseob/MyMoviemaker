@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('electron', {
     getPrompts: () => ipcRenderer.invoke('get-prompts'),
     savePrompts: (data) => ipcRenderer.invoke('save-prompts', data),
     processArticle: (text, articleType) => ipcRenderer.invoke('process-article', { text, articleType }),
+    loadArticleResult: () => ipcRenderer.invoke('load-article-result'),
     publishArticle: (articleData) => ipcRenderer.invoke('publish-article', articleData),
     onPublishStatus: (callback) => {
         ipcRenderer.on('publish-status', (_event, status) => callback(status));

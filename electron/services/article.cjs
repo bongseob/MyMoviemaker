@@ -157,7 +157,21 @@ ${typeSpecificRules}
     `;
 }
 
-function registerArticleIpc({ ipcMain, app, isDev }) {
+function normalizeArticleData(articleData) {
+    const requiredData = assertArticleData(articleData);
+    return {
+        ...requiredData,
+        copyText: typeof articleData.copyText === 'string' ? articleData.copyText : buildCopyText(requiredData),
+        revisionNotes: Array.isArray(articleData.revisionNotes)
+            ? articleData.revisionNotes.map((item) => String(item || '').trim()).filter(Boolean)
+            : [],
+        exclusionReasons: Array.isArray(articleData.exclusionReasons)
+            ? articleData.exclusionReasons.map((item) => String(item || '').trim()).filter(Boolean)
+            : []
+    };
+}
+
+function registerArticleIpc({ ipcMain, dialog, app, isDev }) {
     const promptManager = getPromptManager(app);
 
     ipcMain.handle('get-prompts', () => {
@@ -170,6 +184,33 @@ function registerArticleIpc({ ipcMain, app, isDev }) {
     });
 
     // --- OpenAI Article Summarizer ---
+
+    ipcMain.handle('load-article-result', async () => {
+        try {
+            const selection = await dialog.showOpenDialog({
+                title: '저장된 기사 JSON 불러오기',
+                defaultPath: getOutputDir(app, isDev, 'articles'),
+                properties: ['openFile'],
+                filters: [{ name: 'JSON 파일', extensions: ['json'] }]
+            });
+
+            if (selection.canceled || selection.filePaths.length === 0) {
+                return { success: false, canceled: true };
+            }
+
+            const filePath = selection.filePaths[0];
+            const stats = fs.statSync(filePath);
+            if (!stats.isFile() || stats.size > 1024 * 1024) {
+                throw new Error('기사 JSON 파일은 1MB 이하의 파일이어야 합니다.');
+            }
+
+            const articleData = normalizeArticleData(JSON.parse(fs.readFileSync(filePath, 'utf-8')));
+            return { success: true, data: articleData, savedPath: filePath };
+        } catch (error) {
+            console.error('Error loading article result:', error);
+            return { success: false, error: getErrorMessage(error) };
+        }
+    });
 
     ipcMain.handle('process-article', async (event, payload) => {
         try {
