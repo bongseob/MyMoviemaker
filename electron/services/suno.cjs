@@ -404,6 +404,65 @@ function buildDateMp3FileName() {
     return `${yyyy}${mm}${dd}.mp3`;
 }
 
+async function hasVisibleSunoBlockingOverlay(page) {
+    const overlays = page.locator('[data-open][aria-hidden="true"][role="presentation"]');
+    const count = await overlays.count();
+    for (let i = 0; i < count; i++) {
+        if (await overlays.nth(i).isVisible().catch(() => false)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+async function waitForSunoBlockingOverlayToClose(page, timeout = 3000) {
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+        if (!(await hasVisibleSunoBlockingOverlay(page))) {
+            return true;
+        }
+        await page.waitForTimeout(100);
+    }
+    return !(await hasVisibleSunoBlockingOverlay(page));
+}
+
+async function dismissSunoBlockingDialog(page) {
+    if (!(await hasVisibleSunoBlockingOverlay(page))) {
+        return;
+    }
+
+    const dialogs = page.locator('[role="dialog"]:visible, [aria-modal="true"]:visible');
+    const closeControls = dialogs.locator([
+        'button[aria-label="Close" i]',
+        'button[aria-label="Dismiss" i]',
+        'button[aria-label="Cancel" i]',
+        'button[aria-label="닫기" i]',
+        'button[aria-label="취소" i]',
+        'button:has-text("Close")',
+        'button:has-text("Dismiss")',
+        'button:has-text("Cancel")',
+        'button:has-text("닫기")',
+        'button:has-text("취소")'
+    ].join(', '));
+
+    const count = await closeControls.count();
+    for (let i = 0; i < count; i++) {
+        const control = closeControls.nth(i);
+        if (!(await control.isVisible().catch(() => false))) continue;
+        await control.click({ timeout: 3000 }).catch(() => {});
+        if (await waitForSunoBlockingOverlayToClose(page)) {
+            return;
+        }
+    }
+
+    await page.keyboard.press('Escape');
+    if (await waitForSunoBlockingOverlayToClose(page)) {
+        return;
+    }
+
+    throw new Error('Suno 안내 창이 생성 버튼을 가리고 있습니다. 열린 Suno 창에서 안내 내용을 확인하고 닫은 뒤 다시 시도해 주세요.');
+}
+
 async function clickSunoCreateButton(page) {
     const selectors = [
         'button[aria-label="Create song"]',
@@ -434,7 +493,8 @@ async function clickSunoCreateButton(page) {
     await page.waitForFunction((element) => {
         return !element.disabled && element.getAttribute('aria-disabled') !== 'true';
     }, buttonHandle, { timeout: 10000 });
-    await createButton.click();
+    await dismissSunoBlockingDialog(page);
+    await createButton.click({ timeout: 10000 });
 }
 
 function registerSunoIpc({ ipcMain, app, isDev }) {
@@ -650,6 +710,7 @@ module.exports = {
         ensureSunoAdvancedMode,
         ensureSunoWriteLyricsMode,
         replaceInputText,
+        dismissSunoBlockingDialog,
         clickSunoCreateButton
     }
 };

@@ -110,10 +110,73 @@ async function testCurrentSunoAdvancedEditorShape() {
     });
 }
 
+async function testCreateButtonDismissesBlockingDialog() {
+    await withPage(`
+        <button id="create" type="button" aria-label="Create song">Create</button>
+        <div id="portal" data-base-ui-portal>
+            <div id="backdrop" data-open aria-hidden="true" role="presentation"
+                style="position: fixed; inset: 0; z-index: 9999; background: rgba(0, 0, 0, 0.6);"></div>
+            <div role="dialog" aria-modal="true" style="position: fixed; inset: 20px; z-index: 10000;">
+                <button id="close-dialog" type="button" aria-label="Close">Close</button>
+            </div>
+        </div>
+        <script>
+            document.getElementById('close-dialog').addEventListener('click', () => {
+                document.getElementById('portal').remove();
+            });
+            document.getElementById('create').addEventListener('click', () => {
+                document.body.dataset.created = 'true';
+            });
+        </script>
+    `, async (page) => {
+        page.setDefaultTimeout(1000);
+        await clickSunoCreateButton(page);
+
+        assert.strictEqual(await page.locator('#portal').count(), 0);
+        assert.strictEqual(await page.locator('body').getAttribute('data-created'), 'true');
+    });
+}
+
+async function testCreateButtonDismissesDialogWithEscape() {
+    await withPage(`
+        <button id="create" type="button" aria-label="Create song">Create</button>
+        <div id="backdrop" data-open aria-hidden="true" role="presentation"
+            style="position: fixed; inset: 0; z-index: 9999;"></div>
+        <script>
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') document.getElementById('backdrop').remove();
+            });
+            document.getElementById('create').addEventListener('click', () => {
+                document.body.dataset.created = 'true';
+            });
+        </script>
+    `, async (page) => {
+        await clickSunoCreateButton(page);
+        assert.strictEqual(await page.locator('#backdrop').count(), 0);
+        assert.strictEqual(await page.locator('body').getAttribute('data-created'), 'true');
+    });
+}
+
+async function testCreateButtonReportsPersistentDialog() {
+    await withPage(`
+        <button type="button" aria-label="Create song">Create</button>
+        <div data-open aria-hidden="true" role="presentation"
+            style="position: fixed; inset: 0; z-index: 9999;"></div>
+    `, async (page) => {
+        await assert.rejects(
+            clickSunoCreateButton(page),
+            /Suno 안내 창이 생성 버튼을 가리고 있습니다/
+        );
+    });
+}
+
 (async () => {
     await testRenamedLyricsTab();
     await testFieldsAlreadyVisibleWithoutCustomTab();
     await testCurrentSunoAdvancedEditorShape();
+    await testCreateButtonDismissesBlockingDialog();
+    await testCreateButtonDismissesDialogWithEscape();
+    await testCreateButtonReportsPersistentDialog();
     console.log('Suno selector probe passed');
 })().catch((error) => {
     console.error(error);
