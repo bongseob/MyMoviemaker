@@ -47,6 +47,15 @@ function mergeRefinedSrtChunk(originalChunk, refinedChunk) {
     }).join('\n\n');
 }
 
+const VOCAL_FILLER_TOKENS = new Set([
+    'yeah', 'yea', 'ya', 'yo', 'hey',
+    'oh', 'ooh', 'woo', 'woah', 'whoa',
+    'uh', 'um', 'hmm',
+    '예', '예예', '야', '요', '헤이',
+    '오', '오오', '우', '워', '워어',
+    '음', '어', '아'
+]);
+
 function canonicalizeLyrics(text) {
     return String(text || '')
         .normalize('NFKC')
@@ -54,11 +63,34 @@ function canonicalizeLyrics(text) {
         .replace(/[^\p{L}\p{N}]+/gu, '');
 }
 
-function assertRefinedLyricsMatchReference(referenceLyrics, refinedSrt) {
-    const reference = canonicalizeLyrics(normalizeReferenceLyrics(referenceLyrics));
-    const refined = canonicalizeLyrics(parseStructuredSrt(refinedSrt).map((block) => block.text).join('\n'));
+function lyricsMatchAllowingExtraFillers(referenceText, refinedText) {
+    const reference = canonicalizeLyrics(referenceText);
+    const refinedTokens = String(refinedText || '')
+        .normalize('NFKC')
+        .toLocaleLowerCase('ko-KR')
+        .split(/[^\p{L}\p{N}]+/gu)
+        .filter(Boolean);
+    let positions = new Set([0]);
 
-    if (!reference || refined !== reference) {
+    for (const token of refinedTokens) {
+        const nextPositions = new Set(VOCAL_FILLER_TOKENS.has(token) ? positions : []);
+        for (const position of positions) {
+            if (reference.startsWith(token, position)) {
+                nextPositions.add(position + token.length);
+            }
+        }
+        positions = nextPositions;
+        if (positions.size === 0) return false;
+    }
+
+    return positions.has(reference.length);
+}
+
+function assertRefinedLyricsMatchReference(referenceLyrics, refinedSrt) {
+    const reference = normalizeReferenceLyrics(referenceLyrics);
+    const refined = parseStructuredSrt(refinedSrt).map((block) => block.text).join('\n');
+
+    if (!canonicalizeLyrics(reference) || !lyricsMatchAllowingExtraFillers(reference, refined)) {
         throw new Error('보정된 자막 내용이 원문 가사와 일치하지 않습니다. 잘못된 결과는 저장하지 않았습니다.');
     }
 }

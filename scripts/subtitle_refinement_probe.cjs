@@ -73,6 +73,23 @@ function testSrtLyricsSurviveInternalBlankLines() {
     assert.match(output, /세 번째 가사/);
 }
 
+function testLongSrtBlockKeepsContinuousAllocatedTime() {
+    const input = [
+        '1',
+        '00:00:00,000 --> 00:00:12,000',
+        '이것은 하나의 자막 블록이 지나치게 길게 생성되었을 때 여러 구간으로 나누고 전체 시간을 글자 길이에 따라 적절히 배분하는지 확인하기 위한 테스트 문장입니다'
+    ].join('\n');
+    const output = normalizeSrtSegments(input);
+    const timings = Array.from(output.matchAll(/(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})/g));
+
+    assert.ok(timings.length > 1 && timings.length <= 5);
+    assert.strictEqual(timings[0][1], '00:00:00,000');
+    assert.strictEqual(timings[timings.length - 1][2], '00:00:12,000');
+    for (let index = 1; index < timings.length; index += 1) {
+        assert.strictEqual(timings[index - 1][2], timings[index][1]);
+    }
+}
+
 function testRefinedLyricsMustMatchReference() {
     const reference = '첫 번째 가사\n\n두 번째 가사';
     const matchingSrt = '1\n00:00:00,000 --> 00:00:03,000\n첫 번째 가사,\n\n2\n00:00:03,000 --> 00:00:06,000\n두 번째 가사.';
@@ -81,6 +98,32 @@ function testRefinedLyricsMustMatchReference() {
     assert.doesNotThrow(() => assertRefinedLyricsMatchReference(reference, matchingSrt));
     assert.throws(
         () => assertRefinedLyricsMatchReference(reference, unrelatedSrt),
+        /보정된 자막 내용이 원문 가사와 일치하지 않습니다/
+    );
+}
+
+function testRefinedLyricsIgnoreStandaloneVocalFillers() {
+    const reference = '오늘 다시 시작해\n우리 함께 노래해';
+    const refinedSrt = [
+        '1',
+        '00:00:00,000 --> 00:00:03,000',
+        'Yeah, 오늘 다시 시작해, oh',
+        '',
+        '2',
+        '00:00:03,000 --> 00:00:06,000',
+        '우리 함께 노래해, 워어'
+    ].join('\n');
+
+    assert.doesNotThrow(() => assertRefinedLyricsMatchReference(reference, refinedSrt));
+    assert.throws(
+        () => assertRefinedLyricsMatchReference('오늘 다시 시작해', '1\n00:00:00,000 --> 00:00:03,000\n늘 다시 시작해'),
+        /보정된 자막 내용이 원문 가사와 일치하지 않습니다/
+    );
+    assert.doesNotThrow(
+        () => assertRefinedLyricsMatchReference('아 오늘 다시 시작해', '1\n00:00:00,000 --> 00:00:03,000\n아 오늘 다시 시작해')
+    );
+    assert.throws(
+        () => assertRefinedLyricsMatchReference('아 오늘 다시 시작해', '1\n00:00:00,000 --> 00:00:03,000\n오늘 다시 시작해'),
         /보정된 자막 내용이 원문 가사와 일치하지 않습니다/
     );
 }
@@ -196,7 +239,9 @@ async function testSubtitleIpcGenerationAndRefinementPaths() {
     testRefinementKeepsOriginalSrtStructure();
     testRefinementRejectsChangedStructure();
     testSrtLyricsSurviveInternalBlankLines();
+    testLongSrtBlockKeepsContinuousAllocatedTime();
     testRefinedLyricsMustMatchReference();
+    testRefinedLyricsIgnoreStandaloneVocalFillers();
     await testSubtitleIpcGenerationAndRefinementPaths();
     console.log('Subtitle refinement probe passed');
 })().catch((error) => {
