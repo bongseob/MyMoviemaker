@@ -55,6 +55,37 @@ function testRefinementRejectsChangedStructure() {
     );
 }
 
+function testRefinementAcceptsSafeSrtFormattingVariants() {
+    const original = [
+        '1',
+        '00:00:00,000 --> 00:00:03,000',
+        '부정확한 첫 가사',
+        '',
+        '2',
+        '00:00:03,000 --> 00:00:06,000',
+        '부정확한 둘째 가사'
+    ].join('\n');
+    const refinedWithoutBlankSeparator = [
+        '1',
+        '00:00:00.000  -->  00:00:03.000',
+        '정확한 첫 가사',
+        '2',
+        '00:00:03.000 --> 00:00:06.000',
+        '정확한 둘째 가사'
+    ].join('\n');
+    const expected = [
+        '1',
+        '00:00:00,000 --> 00:00:03,000',
+        '정확한 첫 가사',
+        '',
+        '2',
+        '00:00:03,000 --> 00:00:06,000',
+        '정확한 둘째 가사'
+    ].join('\n');
+
+    assert.strictEqual(mergeRefinedSrtChunk(original, refinedWithoutBlankSeparator), expected);
+}
+
 function testSrtLyricsSurviveInternalBlankLines() {
     const input = [
         '1',
@@ -238,6 +269,7 @@ async function testSubtitleIpcGenerationAndRefinementPaths() {
     testReferenceLyricsRemoveBlankLines();
     testRefinementKeepsOriginalSrtStructure();
     testRefinementRejectsChangedStructure();
+    testRefinementAcceptsSafeSrtFormattingVariants();
     testSrtLyricsSurviveInternalBlankLines();
     testLongSrtBlockKeepsContinuousAllocatedTime();
     testRefinedLyricsMustMatchReference();

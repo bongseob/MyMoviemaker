@@ -7,26 +7,45 @@ function normalizeReferenceLyrics(text) {
         .join('\n');
 }
 
-const SRT_TIMING_PATTERN = /^\d{2}:\d{2}:\d{2},\d{3}\s+-->\s+\d{2}:\d{2}:\d{2},\d{3}(?:\s+.*)?$/;
-const SRT_BLOCK_BOUNDARY = /\n{2,}(?=\d+\s*\n\d{2}:\d{2}:\d{2},\d{3}\s+-->)/;
+const SRT_BLOCK_HEADER_PATTERN = /^[ \t]*(\d+)[ \t]*\n[ \t]*(\d{2}:\d{2}:\d{2}[,.]\d{3})[ \t]*-->[ \t]*(\d{2}:\d{2}:\d{2}[,.]\d{3})[^\n]*\n/gm;
+
+function normalizeSrtTimestamp(value) {
+    return String(value || '').replace('.', ',');
+}
 
 function parseStructuredSrt(content) {
-    return String(content || '')
+    const normalized = String(content || '')
         .replace(/\r\n/g, '\n')
-        .trim()
-        .split(SRT_BLOCK_BOUNDARY)
-        .map((block) => {
-            const lines = block.split('\n');
-            const number = lines.shift()?.trim() || '';
-            const timing = lines.shift()?.trim() || '';
-            const text = lines.map((line) => line.trim()).filter(Boolean).join('\n');
+        .trim();
+    const headers = Array.from(normalized.matchAll(SRT_BLOCK_HEADER_PATTERN));
 
-            if (!/^\d+$/.test(number) || !SRT_TIMING_PATTERN.test(timing) || !text) {
-                throw new Error('AI 자막 보정 결과가 올바른 SRT 블록 형식이 아닙니다.');
-            }
+    if (headers.length === 0 || normalized.slice(0, headers[0].index).trim()) {
+        throw new Error('AI 자막 보정 결과가 올바른 SRT 블록 형식이 아닙니다.');
+    }
 
-            return { number, timing, text };
-        });
+    return headers.map((header, index) => {
+        const textStart = header.index + header[0].length;
+        const textEnd = index + 1 < headers.length ? headers[index + 1].index : normalized.length;
+        const text = normalized.slice(textStart, textEnd)
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .join('\n');
+        const start = normalizeSrtTimestamp(header[2]);
+        const end = normalizeSrtTimestamp(header[3]);
+
+        if (!text) {
+            throw new Error('AI 자막 보정 결과가 올바른 SRT 블록 형식이 아닙니다.');
+        }
+
+        return {
+            number: header[1],
+            timing: `${start} --> ${end}`,
+            start,
+            end,
+            text
+        };
+    });
 }
 
 function mergeRefinedSrtChunk(originalChunk, refinedChunk) {
@@ -39,7 +58,7 @@ function mergeRefinedSrtChunk(originalChunk, refinedChunk) {
 
     return originalBlocks.map((original, index) => {
         const refined = refinedBlocks[index];
-        if (refined.number !== original.number || refined.timing !== original.timing) {
+        if (refined.number !== original.number || refined.start !== original.start || refined.end !== original.end) {
             throw new Error(`AI 자막 보정 결과가 ${original.number}번 자막의 번호 또는 타임코드를 변경했습니다.`);
         }
 

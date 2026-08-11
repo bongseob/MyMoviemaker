@@ -24,6 +24,7 @@ export default function SubtitleRefiner({ initialSummary, initialMp3Path, onSrtG
   const [successPath, setSuccessPath] = useState<string | null>(null);
   const [mp3Path, setMp3Path] = useState<string | null>(null);
   const [sourceAudioPath, setSourceAudioPath] = useState<string | null>(null);
+  const [generatedContent, setGeneratedContent] = useState('');
   const [refinedContent, setRefinedContent] = useState('');
   const [isSavingContent, setIsSavingContent] = useState(false);
   const appliedInitialMp3PathRef = useRef<string | null>(null);
@@ -82,6 +83,7 @@ export default function SubtitleRefiner({ initialSummary, initialMp3Path, onSrtG
       if (!result.canceled && result.filePaths.length > 0) {
         setSrtPath(result.filePaths[0]);
         setSuccessPath(null);
+        setGeneratedContent('');
         setRefinedContent('');
         setStatus(null);
       }
@@ -110,6 +112,8 @@ export default function SubtitleRefiner({ initialSummary, initialMp3Path, onSrtG
         setMp3Path(result.filePaths[0]);
         setSourceAudioPath(null);
         setSuccessPath(null);
+        setGeneratedContent('');
+        setRefinedContent('');
         setStatus(null);
       }
     } catch (err: unknown) {
@@ -166,6 +170,7 @@ export default function SubtitleRefiner({ initialSummary, initialMp3Path, onSrtG
     setError(null);
     setSuccessPath(null);
     setSourceAudioPath(null);
+    setGeneratedContent('');
     setRefinedContent('');
     if (!mp3Path) return;
 
@@ -179,7 +184,7 @@ export default function SubtitleRefiner({ initialSummary, initialMp3Path, onSrtG
         setSrtPath(response.outputPath);
         setSuccessPath(response.outputPath);
         setSourceAudioPath(response.sourcePath || null);
-        setRefinedContent(data?.content || '');
+        setGeneratedContent(data?.content || '');
         setStatus('SRT generation completed.');
       } else {
         setError(response.error || 'Failed to generate SRT from Suno MP3.');
@@ -285,12 +290,30 @@ export default function SubtitleRefiner({ initialSummary, initialMp3Path, onSrtG
               disabled={isProcessing}
             />
 
+            {generatedContent && (
+              <div className="space-y-3">
+                <label className="text-sm font-semibold text-slate-300 uppercase tracking-widest flex items-center gap-2">
+                  <Captions className="w-4 h-4 text-indigo-400" />
+                  MP3에서 생성된 SRT
+                </label>
+                <textarea
+                  value={generatedContent}
+                  readOnly
+                  data-testid="generated-srt-content"
+                  className="w-full h-96 bg-slate-950 border border-indigo-500/30 rounded-2xl p-5 text-sm outline-none text-white resize-y leading-relaxed font-mono"
+                />
+                <p className="text-xs text-slate-400">
+                  AI 보정 중에도 생성된 원본 SRT를 비교할 수 있도록 유지합니다.
+                </p>
+              </div>
+            )}
+
             {refinedContent && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <label className="text-sm font-semibold text-slate-300 uppercase tracking-widest flex items-center gap-2">
                     <FileText className="w-4 h-4 text-emerald-400" />
-                    SRT Content Review
+                    AI 보정된 SRT
                   </label>
                   <button
                     type="button"
@@ -305,6 +328,7 @@ export default function SubtitleRefiner({ initialSummary, initialMp3Path, onSrtG
                 <textarea
                   value={refinedContent}
                   onChange={(e) => setRefinedContent(e.target.value)}
+                  data-testid="refined-srt-content"
                   placeholder="교정된 SRT 내용이 여기에 표시됩니다."
                   className="w-full h-96 bg-slate-950 border border-emerald-500/30 rounded-2xl p-5 text-sm focus:border-emerald-400 outline-none transition-colors text-white resize-y leading-relaxed font-mono"
                   disabled={isSavingContent}
