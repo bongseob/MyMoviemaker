@@ -7,13 +7,13 @@ function normalizeReferenceLyrics(text) {
         .join('\n');
 }
 
-const SRT_BLOCK_HEADER_PATTERN = /^[ \t]*(\d+)[ \t]*\n[ \t]*(\d{2}:\d{2}:\d{2}[,.]\d{3})[ \t]*-->[ \t]*(\d{2}:\d{2}:\d{2}[,.]\d{3})[^\n]*\n/gm;
+const SRT_BLOCK_HEADER_PATTERN = /^[ \t]*(\d+)[ \t]*\n[ \t]*(\d{2}:\d{2}:\d{2}[,.]\d{3})[ \t]*-->[ \t]*(\d{2}:\d{2}:\d{2}[,.]\d{3})[^\n]*(?:\n|$)/gm;
 
 function normalizeSrtTimestamp(value) {
     return String(value || '').replace('.', ',');
 }
 
-function parseStructuredSrt(content) {
+function parseStructuredSrt(content, options = {}) {
     const normalized = String(content || '')
         .replace(/\r\n/g, '\n')
         .trim();
@@ -34,7 +34,7 @@ function parseStructuredSrt(content) {
         const start = normalizeSrtTimestamp(header[2]);
         const end = normalizeSrtTimestamp(header[3]);
 
-        if (!text) {
+        if (!text && !options.allowEmptyText) {
             throw new Error('AI 자막 보정 결과가 올바른 SRT 블록 형식이 아닙니다.');
         }
 
@@ -50,7 +50,7 @@ function parseStructuredSrt(content) {
 
 function mergeRefinedSrtChunk(originalChunk, refinedChunk) {
     const originalBlocks = parseStructuredSrt(originalChunk);
-    const refinedBlocks = parseStructuredSrt(refinedChunk);
+    const refinedBlocks = parseStructuredSrt(refinedChunk, { allowEmptyText: true });
 
     if (refinedBlocks.length !== originalBlocks.length) {
         throw new Error(`AI 자막 보정 결과의 블록 수가 원본과 다릅니다. (${refinedBlocks.length}/${originalBlocks.length})`);
@@ -62,7 +62,15 @@ function mergeRefinedSrtChunk(originalChunk, refinedChunk) {
             throw new Error(`AI 자막 보정 결과가 ${original.number}번 자막의 번호 또는 타임코드를 변경했습니다.`);
         }
 
-        return [original.number, original.timing, refined.text].join('\n');
+        let refinedText = refined.text;
+        if (!refinedText) {
+            if (!isVocalFillerOnly(original.text)) {
+                throw new Error(`AI 자막 보정 결과가 ${original.number}번 자막의 일반 가사를 비웠습니다.`);
+            }
+            refinedText = original.text;
+        }
+
+        return [original.number, original.timing, refinedText].join('\n');
     }).join('\n\n');
 }
 
@@ -74,6 +82,16 @@ const VOCAL_FILLER_TOKENS = new Set([
     '오', '오오', '우', '워', '워어',
     '음', '어', '아'
 ]);
+
+function isVocalFillerOnly(text) {
+    const tokens = String(text || '')
+        .normalize('NFKC')
+        .toLocaleLowerCase('ko-KR')
+        .split(/[^\p{L}\p{N}]+/gu)
+        .filter(Boolean);
+
+    return tokens.length > 0 && tokens.every((token) => VOCAL_FILLER_TOKENS.has(token));
+}
 
 function canonicalizeLyrics(text) {
     return String(text || '')

@@ -86,6 +86,49 @@ function testRefinementAcceptsSafeSrtFormattingVariants() {
     assert.strictEqual(mergeRefinedSrtChunk(original, refinedWithoutBlankSeparator), expected);
 }
 
+function testRefinementRestoresEmptyVocalFillerBlock() {
+    const original = [
+        '1',
+        '00:00:00,000 --> 00:00:01,800',
+        '야 야 어',
+        '',
+        '2',
+        '00:00:01,800 --> 00:00:04,720',
+        '부정확한 가사'
+    ].join('\n');
+    const refined = [
+        '1',
+        '00:00:00,000 --> 00:00:01,800',
+        '',
+        '2',
+        '00:00:01,800 --> 00:00:04,720',
+        '정확한 가사'
+    ].join('\n');
+    const expected = [
+        '1',
+        '00:00:00,000 --> 00:00:01,800',
+        '야 야 어',
+        '',
+        '2',
+        '00:00:01,800 --> 00:00:04,720',
+        '정확한 가사'
+    ].join('\n');
+
+    assert.strictEqual(mergeRefinedSrtChunk(original, refined), expected);
+    assert.throws(
+        () => mergeRefinedSrtChunk(original.replace('야 야 어', '반드시 남을 가사'), refined),
+        /1번 자막의 일반 가사를 비웠습니다/
+    );
+
+    const finalFillerOriginal = '1\n00:00:00,000 --> 00:00:01,800\n야 야 어';
+    const finalEmptyRefined = '1\n00:00:00,000 --> 00:00:01,800';
+    assert.strictEqual(mergeRefinedSrtChunk(finalFillerOriginal, finalEmptyRefined), finalFillerOriginal);
+    assert.throws(
+        () => mergeRefinedSrtChunk(finalFillerOriginal.replace('야 야 어', '반드시 남을 가사'), finalEmptyRefined),
+        /1번 자막의 일반 가사를 비웠습니다/
+    );
+}
+
 function testSrtLyricsSurviveInternalBlankLines() {
     const input = [
         '1',
@@ -179,22 +222,30 @@ async function testSubtitleIpcGenerationAndRefinementPaths() {
     ].join('\n');
     const sourceSrt = [
         '1',
-        '00:00:00,000 --> 00:00:03,000',
-        '부정확한 첫 가사',
+        '00:00:00,000 --> 00:00:01,000',
+        '야 야 어',
         '',
         '2',
+        '00:00:01,000 --> 00:00:03,000',
+        '부정확한 첫 가사',
+        '',
+        '3',
         '00:00:03,000 --> 00:00:06,000',
         '부정확한 둘째 가사'
     ].join('\n');
     const refinedSrt = [
         '1',
-        '00:00:00,000 --> 00:00:03,000',
-        '정확한 첫 가사',
+        '00:00:00,000 --> 00:00:01,000',
         '',
         '2',
+        '00:00:01,000 --> 00:00:03,000',
+        '정확한 첫 가사',
+        '',
+        '3',
         '00:00:03,000 --> 00:00:06,000',
         '정확한 둘째 가사'
     ].join('\n');
+    const expectedRefinedSrt = refinedSrt.replace('00:00:00,000 --> 00:00:01,000\n\n2', '00:00:00,000 --> 00:00:01,000\n야 야 어\n\n2');
     completionContent = refinedSrt;
 
     class FakeOpenAI {
@@ -232,15 +283,18 @@ async function testSubtitleIpcGenerationAndRefinementPaths() {
             summaryText: '정확한 첫 가사\n\n   \n정확한 둘째 가사'
         });
         assert.strictEqual(refined.success, true);
-        assert.strictEqual(refined.data.content, refinedSrt);
+        assert.strictEqual(refined.data.content, expectedRefinedSrt);
         assert.match(refinementPrompt, /정확한 첫 가사\n정확한 둘째 가사/);
 
         completionContent = [
             '1',
-            '00:00:00,000 --> 00:00:03,000',
-            '전혀 다른 첫 내용',
+            '00:00:00,000 --> 00:00:01,000',
             '',
             '2',
+            '00:00:01,000 --> 00:00:03,000',
+            '전혀 다른 첫 내용',
+            '',
+            '3',
             '00:00:03,000 --> 00:00:06,000',
             '전혀 다른 둘째 내용'
         ].join('\n');
@@ -270,6 +324,7 @@ async function testSubtitleIpcGenerationAndRefinementPaths() {
     testRefinementKeepsOriginalSrtStructure();
     testRefinementRejectsChangedStructure();
     testRefinementAcceptsSafeSrtFormattingVariants();
+    testRefinementRestoresEmptyVocalFillerBlock();
     testSrtLyricsSurviveInternalBlankLines();
     testLongSrtBlockKeepsContinuousAllocatedTime();
     testRefinedLyricsMustMatchReference();
