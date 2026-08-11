@@ -74,6 +74,45 @@ function mergeRefinedSrtChunk(originalChunk, refinedChunk) {
     }).join('\n\n');
 }
 
+function mergeRefinedSrtChunkWithFallback(originalChunk, refinedChunk) {
+    const originalBlocks = parseStructuredSrt(originalChunk);
+    const normalizedRefined = String(refinedChunk || '').replace(/\r\n/g, '\n').trim();
+    const originalNumbers = new Set(originalBlocks.map((block) => block.number));
+    const candidateStarts = Array.from(normalizedRefined.matchAll(/^[ \t]*(\d+)[ \t]*(?:\n|$)/gm))
+        .filter((match) => originalNumbers.has(match[1]));
+    const refinedBlocks = candidateStarts.flatMap((start, index) => {
+        const end = index + 1 < candidateStarts.length ? candidateStarts[index + 1].index : normalizedRefined.length;
+        try {
+            const blocks = parseStructuredSrt(normalizedRefined.slice(start.index, end), { allowEmptyText: true });
+            return blocks.length === 1 ? blocks : [];
+        } catch {
+            return [];
+        }
+    });
+
+    const unusedRefinedIndexes = new Set(refinedBlocks.map((_, index) => index));
+    const restoredBlockNumbers = [];
+    const content = originalBlocks.map((original) => {
+        const refinedIndex = refinedBlocks.findIndex((refined, index) =>
+            unusedRefinedIndexes.has(index)
+            && refined.number === original.number
+            && refined.start === original.start
+            && refined.end === original.end
+        );
+        const refined = refinedIndex >= 0 ? refinedBlocks[refinedIndex] : null;
+        if (refinedIndex >= 0) unusedRefinedIndexes.delete(refinedIndex);
+
+        if (!refined?.text) {
+            restoredBlockNumbers.push(original.number);
+            return [original.number, original.timing, original.text].join('\n');
+        }
+
+        return [original.number, original.timing, refined.text].join('\n');
+    }).join('\n\n');
+
+    return { content, restoredBlockNumbers };
+}
+
 const VOCAL_FILLER_TOKENS = new Set([
     'yeah', 'yea', 'ya', 'yo', 'hey',
     'oh', 'ooh', 'woo', 'woah', 'whoa',
@@ -135,5 +174,6 @@ function assertRefinedLyricsMatchReference(referenceLyrics, refinedSrt) {
 module.exports = {
     normalizeReferenceLyrics,
     mergeRefinedSrtChunk,
+    mergeRefinedSrtChunkWithFallback,
     assertRefinedLyricsMatchReference
 };

@@ -35,6 +35,7 @@ type IpcResult<T = unknown> = {
   success?: boolean;
   canceled?: boolean;
   error?: string;
+  warning?: string;
   data?: T;
   savedPath?: string;
   outputPath?: string;

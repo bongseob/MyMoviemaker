@@ -6,6 +6,7 @@ const { registerSubtitleIpc } = require('../electron/services/subtitle-refiner.c
 const {
     normalizeReferenceLyrics,
     mergeRefinedSrtChunk,
+    mergeRefinedSrtChunkWithFallback,
     assertRefinedLyricsMatchReference
 } = require('../electron/services/subtitle-refinement.cjs');
 const { normalizeSrtSegments } = require('../electron/services/subtitle-utils.cjs');
@@ -53,6 +54,45 @@ function testRefinementRejectsChangedStructure() {
         () => mergeRefinedSrtChunk(`${original}\n\n2\n00:00:03,000 --> 00:00:06,000\n다음 가사`, original),
         /블록 수가 원본과 다릅니다/
     );
+}
+
+function testRefinementRecoversOnlyInvalidBlocks() {
+    const original = [
+        '1', '00:00:00,000 --> 00:00:01,000', '첫 원본', '',
+        '2', '00:00:01,000 --> 00:00:02,000', '둘 원본', '',
+        '3', '00:00:02,000 --> 00:00:03,000', '셋 원본'
+    ].join('\n');
+    const partlyInvalid = [
+        '1', '00:00:00,000 --> 00:00:01,000', '첫 보정', '',
+        '2', '00:00:01,500 --> 00:00:02,000', '둘 잘못된 시간', '',
+        '3', '00:00:02,000 --> 00:00:03,000', '셋 보정'
+    ].join('\n');
+
+    const result = mergeRefinedSrtChunkWithFallback(original, partlyInvalid);
+    assert.deepStrictEqual(result.restoredBlockNumbers, ['2']);
+    assert.match(result.content, /첫 보정/);
+    assert.match(result.content, /둘 원본/);
+    assert.match(result.content, /셋 보정/);
+
+    const malformedMiddle = [
+        '1', '00:00:00,000 --> 00:00:01,000', '첫 보정', '',
+        '2', '깨진 시간 --> 값', '둘 오염 위험', '',
+        '3', '00:00:02,000 --> 00:00:03,000', '셋 보정'
+    ].join('\n');
+    const malformedResult = mergeRefinedSrtChunkWithFallback(original, malformedMiddle);
+    assert.deepStrictEqual(malformedResult.restoredBlockNumbers, ['2']);
+    assert.match(malformedResult.content, /첫 보정/);
+    assert.doesNotMatch(malformedResult.content, /둘 오염 위험/);
+    assert.match(malformedResult.content, /둘 원본/);
+    assert.match(malformedResult.content, /셋 보정/);
+
+    const missingTimingMiddle = malformedMiddle.replace('깨진 시간 --> 값\n', '');
+    const missingTimingResult = mergeRefinedSrtChunkWithFallback(original, missingTimingMiddle);
+    assert.deepStrictEqual(missingTimingResult.restoredBlockNumbers, ['2']);
+    assert.match(missingTimingResult.content, /첫 보정/);
+    assert.doesNotMatch(missingTimingResult.content, /둘 오염 위험/);
+    assert.match(missingTimingResult.content, /둘 원본/);
+    assert.match(missingTimingResult.content, /셋 보정/);
 }
 
 function testRefinementAcceptsSafeSrtFormattingVariants() {
@@ -298,20 +338,36 @@ async function testSubtitleIpcGenerationAndRefinementPaths() {
             '00:00:03,000 --> 00:00:06,000',
             '전혀 다른 둘째 내용'
         ].join('\n');
-        const originalConsoleError = console.error;
-        console.error = () => {};
-        let rejected;
+        const originalConsoleWarn = console.warn;
+        console.warn = () => {};
+        let warned;
         try {
-            rejected = await handlers['refine-subtitles'](event, {
+            warned = await handlers['refine-subtitles'](event, {
                 srtPath: invalidSrtPath,
                 summaryText: '정확한 첫 가사\n정확한 둘째 가사'
             });
         } finally {
-            console.error = originalConsoleError;
+            console.warn = originalConsoleWarn;
         }
-        assert.strictEqual(rejected.success, false);
-        assert.match(rejected.error, /보정된 자막 내용이 원문 가사와 일치하지 않습니다/);
-        assert.strictEqual(fs.existsSync(path.join(tempRoot, 'invalid_refined.srt')), false);
+        assert.strictEqual(warned.success, true);
+        assert.match(warned.warning, /원문과 완전히 일치하지 않습니다/);
+        assert.match(warned.data.content, /전혀 다른 첫 내용/);
+        assert.strictEqual(fs.existsSync(path.join(tempRoot, 'invalid_refined.srt')), true);
+
+        completionContent = 'SRT 형식이 아닌 응답';
+        console.warn = () => {};
+        let recovered;
+        try {
+            recovered = await handlers['refine-subtitles'](event, {
+                srtPath: invalidSrtPath,
+                summaryText: '정확한 첫 가사\n정확한 둘째 가사'
+            });
+        } finally {
+            console.warn = originalConsoleWarn;
+        }
+        assert.strictEqual(recovered.success, true);
+        assert.match(recovered.warning, /원본 자막을 유지했습니다/);
+        assert.strictEqual(recovered.data.content, sourceSrt);
     } finally {
         if (previousApiKey === undefined) delete process.env.OPENAI_API_KEY;
         else process.env.OPENAI_API_KEY = previousApiKey;
@@ -323,6 +379,7 @@ async function testSubtitleIpcGenerationAndRefinementPaths() {
     testReferenceLyricsRemoveBlankLines();
     testRefinementKeepsOriginalSrtStructure();
     testRefinementRejectsChangedStructure();
+    testRefinementRecoversOnlyInvalidBlocks();
     testRefinementAcceptsSafeSrtFormattingVariants();
     testRefinementRestoresEmptyVocalFillerBlock();
     testSrtLyricsSurviveInternalBlankLines();

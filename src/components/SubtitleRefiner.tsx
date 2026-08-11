@@ -21,6 +21,7 @@ export default function SubtitleRefiner({ initialSummary, initialMp3Path, onSrtG
   const [isGeneratingSrt, setIsGeneratingSrt] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [successPath, setSuccessPath] = useState<string | null>(null);
   const [mp3Path, setMp3Path] = useState<string | null>(null);
   const [sourceAudioPath, setSourceAudioPath] = useState<string | null>(null);
@@ -76,6 +77,7 @@ export default function SubtitleRefiner({ initialSummary, initialMp3Path, onSrtG
     }
 
     setError(null);
+    setWarning(null);
 
     try {
       const result = await electron.selectSrtFile();
@@ -132,6 +134,7 @@ export default function SubtitleRefiner({ initialSummary, initialMp3Path, onSrtG
 
     setIsProcessing(true);
     setError(null);
+    setWarning(null);
     setSuccessPath(null);
     setRefinedContent('');
     setStatus('Preparing subtitle refinement...');
@@ -146,7 +149,8 @@ export default function SubtitleRefiner({ initialSummary, initialMp3Path, onSrtG
         const data = response.data as { content?: string } | undefined;
         setSuccessPath(response.outputPath || null);
         setRefinedContent(data?.content || '');
-        setStatus('Subtitle refinement completed.');
+        setWarning(response.warning || null);
+        setStatus(response.warning ? '보정이 완료되었습니다. 경고 내용을 확인해 주세요.' : 'Subtitle refinement completed.');
       } else {
         setError(response.error || 'Failed to refine subtitles.');
         setStatus(null);
@@ -487,6 +491,13 @@ export default function SubtitleRefiner({ initialSummary, initialMp3Path, onSrtG
               <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-2xl flex items-start gap-3 text-red-400 animate-in fade-in zoom-in duration-300">
                 <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
                 <div className="text-sm font-medium">{error}</div>
+              </div>
+            )}
+
+            {warning && (
+              <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-start gap-3 text-amber-300 animate-in fade-in zoom-in duration-300">
+                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <div className="text-sm font-medium whitespace-pre-line">{warning}</div>
               </div>
             )}
 

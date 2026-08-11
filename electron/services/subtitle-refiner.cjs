@@ -4,7 +4,7 @@ const { OpenAI } = require('openai');
 const { getErrorMessage } = require('../lib/errors.cjs');
 const { getOutputDir } = require('../lib/paths.cjs');
 const { AUDIO_EXTENSIONS, SRT_EXTENSIONS, assertExistingFile, assertPlainObject, assertText } = require('../lib/validation.cjs');
-const { normalizeReferenceLyrics, mergeRefinedSrtChunk, assertRefinedLyricsMatchReference } = require('./subtitle-refinement.cjs');
+const { normalizeReferenceLyrics, mergeRefinedSrtChunkWithFallback, assertRefinedLyricsMatchReference } = require('./subtitle-refinement.cjs');
 const { normalizeSrtSegments } = require('./subtitle-utils.cjs');
 
 function stripMarkdownFence(text) {
@@ -113,7 +113,8 @@ function registerSubtitleIpc({ ipcMain, app, isDev, OpenAIClient = OpenAI }) {
             // SRT 블록 분리    
             const blocks = srtContent.trim().split(/\n\s*\n/);    
             const totalBlocks = blocks.length;    
-            const refinedBlocks = [];    
+            const refinedBlocks = [];
+            const refinementWarnings = [];
             const chunkSize = 15;    
         
             event.sender.send('refine-status', `총 ${totalBlocks}개의 자막 블록 처리를 시작합니다...`);    
@@ -149,7 +150,12 @@ function registerSubtitleIpc({ ipcMain, app, isDev, OpenAIClient = OpenAI }) {
                 });    
         
                 const refinedChunk = stripMarkdownFence(response.choices[0].message.content);
-                refinedBlocks.push(mergeRefinedSrtChunk(chunk, refinedChunk));
+                const merged = mergeRefinedSrtChunkWithFallback(chunk, refinedChunk);
+                refinedBlocks.push(merged.content);
+                if (merged.restoredBlockNumbers.length > 0) {
+                    refinementWarnings.push(`${merged.restoredBlockNumbers.join(', ')}번 자막은 AI 응답 형식이 불안정하여 원본 자막을 유지했습니다.`);
+                    console.warn('Subtitle refinement block fallback:', merged.restoredBlockNumbers.join(', '));
+                }
             }    
         
             const outputDir = path.dirname(srtPath);    
@@ -158,11 +164,21 @@ function registerSubtitleIpc({ ipcMain, app, isDev, OpenAIClient = OpenAI }) {
             const outputPath = path.join(outputDir, `${basename}_refined${ext}`);    
         
             const refinedContent = refinedBlocks.join('\n\n');
-            assertRefinedLyricsMatchReference(summaryText, refinedContent);
+            try {
+                assertRefinedLyricsMatchReference(summaryText, refinedContent);
+            } catch (error) {
+                refinementWarnings.push('보정 결과가 원문과 완전히 일치하지 않습니다. 결과를 직접 확인하고 필요한 부분을 수정한 뒤 저장해 주세요.');
+                console.warn('Subtitle refinement content warning:', getErrorMessage(error));
+            }
             fs.writeFileSync(outputPath, refinedContent, 'utf8');
                 
             event.sender.send('refine-status', '교정 완료!');    
-            return { success: true, outputPath, data: { content: refinedContent } };
+            return {
+                success: true,
+                outputPath,
+                data: { content: refinedContent },
+                warning: refinementWarnings.join('\n') || undefined
+            };
         
         } catch (error) {
             console.error('Error refining subtitles:', error);
