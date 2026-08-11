@@ -4,6 +4,7 @@ const { OpenAI } = require('openai');
 const { getErrorMessage } = require('../lib/errors.cjs');
 const { getOutputDir } = require('../lib/paths.cjs');
 const { AUDIO_EXTENSIONS, SRT_EXTENSIONS, assertExistingFile, assertPlainObject, assertText } = require('../lib/validation.cjs');
+const { normalizeReferenceLyrics, mergeRefinedSrtChunk, assertRefinedLyricsMatchReference } = require('./subtitle-refinement.cjs');
 const { normalizeSrtSegments } = require('./subtitle-utils.cjs');
 
 function stripMarkdownFence(text) {
@@ -42,7 +43,7 @@ function createUniqueFilePath(directory, fileName) {
     return candidate;
 }
 
-function registerSubtitleIpc({ ipcMain, app, isDev }) {
+function registerSubtitleIpc({ ipcMain, app, isDev, OpenAIClient = OpenAI }) {
     ipcMain.handle('generate-srt-from-suno', async (event, data = {}) => {
         try {
             const payload = data ? assertPlainObject(data, 'SRT generation payload') : {};
@@ -56,7 +57,7 @@ function registerSubtitleIpc({ ipcMain, app, isDev }) {
             const mp3Path = assertExistingFile(payload.mp3Path, 'MP3 file', AUDIO_EXTENSIONS);
             const outputPath = createUniqueFilePath(sunoDir, `${getDateBaseName()}.srt`);
             const model = process.env.OPENAI_TRANSCRIBE_MODEL || 'whisper-1';
-            const openai = new OpenAI({ apiKey });
+            const openai = new OpenAIClient({ apiKey });
 
             event.sender.send('refine-status', `Suno MP3 파일을 찾았습니다: ${path.basename(mp3Path)}`);
             event.sender.send('refine-status', 'MP3에서 SRT 자막을 생성하고 있습니다...');
@@ -99,11 +100,11 @@ function registerSubtitleIpc({ ipcMain, app, isDev }) {
         try {
             const payload = assertPlainObject(data, 'Subtitle refinement payload');
             const srtPath = assertExistingFile(payload.srtPath, 'SRT file', SRT_EXTENSIONS);
-            const summaryText = assertText(payload.summaryText, 'Summary text', 50000);
+            const summaryText = normalizeReferenceLyrics(assertText(payload.summaryText, 'Summary text', 50000));
             const apiKey = process.env.OPENAI_API_KEY;
             if (!apiKey) throw new Error('OPENAI_API_KEY가 설정되지 않았습니다.');
                 
-            const openai = new OpenAI({ apiKey });    
+            const openai = new OpenAIClient({ apiKey });
             const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';    
         
             event.sender.send('refine-status', '자막 파일을 읽고 있습니다...');    
@@ -135,7 +136,7 @@ function registerSubtitleIpc({ ipcMain, app, isDev }) {
     """    
         
     지시사항:    
-    1. 제공된 '원본 텍스트'를 참고하여 SRT 자막의 오타, 잘못 인식된 단어, 띄어쓰기를 정확하게 수정하세요.    
+    1. 제공된 '원본 텍스트'를 정답으로 사용하여 SRT 자막의 오타, 잘못 인식된 단어, 띄어쓰기를 원문과 일치하도록 정확하게 수정하세요.
     2. 타임스탬프(예: 00:00:10,000 --> 00:00:15,000)와 자막 번호는 **절대** 변경하거나 삭제하지 마세요. 형식을 엄격히 유지해야 합니다.    
     3. 원본 텍스트에 없는 부연 설명은 추가하지 마세요.    
     4. "구독, 좋아요"와 같은 문구는 SRT에 포함되어 있다면 원본 텍스트의 맥락에 맞게 유지하세요.    
@@ -147,7 +148,8 @@ function registerSubtitleIpc({ ipcMain, app, isDev }) {
                     messages: [{ role: 'user', content: prompt }],    
                 });    
         
-                refinedBlocks.push(stripMarkdownFence(response.choices[0].message.content));
+                const refinedChunk = stripMarkdownFence(response.choices[0].message.content);
+                refinedBlocks.push(mergeRefinedSrtChunk(chunk, refinedChunk));
             }    
         
             const outputDir = path.dirname(srtPath);    
@@ -155,8 +157,9 @@ function registerSubtitleIpc({ ipcMain, app, isDev }) {
             const basename = path.basename(srtPath, ext);    
             const outputPath = path.join(outputDir, `${basename}_refined${ext}`);    
         
-            fs.writeFileSync(outputPath, refinedBlocks.join('\n\n'), 'utf8');
             const refinedContent = refinedBlocks.join('\n\n');
+            assertRefinedLyricsMatchReference(summaryText, refinedContent);
+            fs.writeFileSync(outputPath, refinedContent, 'utf8');
                 
             event.sender.send('refine-status', '교정 완료!');    
             return { success: true, outputPath, data: { content: refinedContent } };

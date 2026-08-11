@@ -150,7 +150,7 @@ function parseSrtBlocks(content) {
     return String(content || '')
         .replace(/\r\n/g, '\n')
         .trim()
-        .split(/\n\s*\n/)
+        .split(/\n{2,}(?=\d+\s*\n\d{2}:\d{2}:\d{2},\d{3}\s*-->)/)
         .map((block) => block.split('\n').map((line) => line.trimEnd()))
         .filter((lines) => lines.length >= 3)
         .map((lines) => {
