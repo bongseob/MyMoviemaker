@@ -497,6 +497,53 @@ async function clickSunoCreateButton(page) {
     await createButton.click({ timeout: 10000 });
 }
 
+async function getSunoTrackIdentity(menuButton) {
+    return menuButton.evaluate((button) => {
+        let container = button.parentElement;
+        while (container && container !== document.body) {
+            const links = Array.from(container.querySelectorAll('a[href]'));
+            for (const link of links) {
+                const href = link.href || link.getAttribute('href') || '';
+                const match = href.match(/\/(?:song|clip)\/([^/?#]+)/i);
+                if (match) {
+                    return {
+                        id: match[1],
+                        href,
+                        title: (link.textContent || '').trim().replace(/\s+/g, ' ')
+                    };
+                }
+            }
+            container = container.parentElement;
+        }
+        return null;
+    });
+}
+
+async function snapshotSunoTrackIds(page) {
+    const ids = new Set();
+    const menuButtons = page.locator('button[aria-label="More options"]');
+    const count = await menuButtons.count();
+    for (let i = 0; i < count; i++) {
+        const identity = await getSunoTrackIdentity(menuButtons.nth(i)).catch(() => null);
+        if (identity?.id) ids.add(identity.id);
+    }
+    return ids;
+}
+
+async function findNewSunoTrack(page, existingTrackIds) {
+    const menuButtons = page.locator('button[aria-label="More options"]');
+    const count = await menuButtons.count();
+    for (let i = 0; i < count; i++) {
+        const menuButton = menuButtons.nth(i);
+        if (!(await menuButton.isVisible().catch(() => false))) continue;
+        const identity = await getSunoTrackIdentity(menuButton).catch(() => null);
+        if (identity?.id && !existingTrackIds.has(identity.id)) {
+            return { ...identity, menuButton };
+        }
+    }
+    return null;
+}
+
 function registerSunoIpc({ ipcMain, app, isDev }) {
     ipcMain.handle('generate-suno-song', async (event, articleData) => {
         const fs = require('fs');
@@ -613,7 +660,11 @@ function registerSunoIpc({ ipcMain, app, isDev }) {
                 }
             }    
         
-            event.sender.send('suno-status', '노래 생성을 시작합니다! (약 2분 소요)');    
+            event.sender.send('suno-status', '노래 생성을 시작합니다! (약 2분 소요)');
+
+            // Capture the current cards before generation. The first card in the
+            // list is not necessarily the result of this request.
+            const existingTrackIds = await snapshotSunoTrackIds(page);
                 
             // Click Create button    
             await clickSunoCreateButton(page);
@@ -633,10 +684,12 @@ function registerSunoIpc({ ipcMain, app, isDev }) {
         
             while (Date.now() - startTime < timeout) {    
                 try {    
-                    // Find the first track's menu button (three dots)    
-                    const menuButton = page.locator("button[aria-label='More options']").first();    
+                    // Select only a card that appeared after this request.
+                    const newTrack = await findNewSunoTrack(page, existingTrackIds);
+                    const menuButton = newTrack?.menuButton;
                         
-                    if (await menuButton.isVisible()) {    
+                    if (menuButton && await menuButton.isVisible()) {
+                        event.sender.send('suno-status', `새 곡 확인: ${newTrack.title || newTrack.id}`);
                         await menuButton.click({ force: true });    
                         await page.waitForTimeout(1000);    
                             
@@ -711,6 +764,8 @@ module.exports = {
         ensureSunoWriteLyricsMode,
         replaceInputText,
         dismissSunoBlockingDialog,
-        clickSunoCreateButton
+        clickSunoCreateButton,
+        snapshotSunoTrackIds,
+        findNewSunoTrack
     }
 };

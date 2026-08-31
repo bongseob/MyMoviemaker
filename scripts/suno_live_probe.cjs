@@ -90,6 +90,7 @@ function eventSink(messages) {
         userDataDir,
         before: null,
         after: null,
+        trackIds: [],
         ensureAdvancedError: null,
         messages
     };
@@ -105,6 +106,7 @@ function eventSink(messages) {
         await page.goto('https://suno.com/create', { waitUntil: 'domcontentloaded', timeout: 60000 });
         await page.waitForTimeout(7000);
         result.before = await visibleSummary(page);
+        result.trackIds = [...await __test.snapshotSunoTrackIds(page)];
 
         try {
             await __test.ensureSunoAdvancedMode(page, eventSink(messages), { manualTimeoutMs: 3000 });

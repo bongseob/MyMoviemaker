@@ -8,7 +8,9 @@ const {
         sunoStyleInputs,
         sunoTitleInputs,
         replaceInputText,
-        clickSunoCreateButton
+        clickSunoCreateButton,
+        snapshotSunoTrackIds,
+        findNewSunoTrack
     }
 } = require('../electron/services/suno.cjs');
 
@@ -170,6 +172,46 @@ async function testCreateButtonReportsPersistentDialog() {
     });
 }
 
+async function testSelectsOnlyANewlyGeneratedTrack() {
+    await withPage(`
+        <article data-testid="clip-card">
+            <a href="https://suno.com/song/existing-song">기존 곡</a>
+            <button type="button" aria-label="More options">More</button>
+        </article>
+    `, async (page) => {
+        const existingTrackIds = await snapshotSunoTrackIds(page);
+        assert.deepStrictEqual([...existingTrackIds], ['existing-song']);
+
+        await page.locator('body').evaluate((body) => {
+            body.insertAdjacentHTML('afterbegin', `
+                <article data-testid="clip-card">
+                    <a href="https://suno.com/song/new-song">새 곡</a>
+                    <button type="button" aria-label="More options">More</button>
+                </article>
+            `);
+        });
+
+        const track = await findNewSunoTrack(page, existingTrackIds);
+        assert.ok(track);
+        assert.strictEqual(track.id, 'new-song');
+        assert.strictEqual(track.title, '새 곡');
+        assert.strictEqual(await track.menuButton.evaluate((element) => element.closest('article').innerText.includes('새 곡')), true);
+    });
+}
+
+async function testDoesNotFallBackToAnExistingTrack() {
+    await withPage(`
+        <article data-testid="clip-card">
+            <a href="/song/existing-song">기존 곡</a>
+            <button type="button" aria-label="More options">More</button>
+        </article>
+    `, async (page) => {
+        const existingTrackIds = await snapshotSunoTrackIds(page);
+        const track = await findNewSunoTrack(page, existingTrackIds);
+        assert.strictEqual(track, null);
+    });
+}
+
 (async () => {
     await testRenamedLyricsTab();
     await testFieldsAlreadyVisibleWithoutCustomTab();
@@ -177,6 +219,8 @@ async function testCreateButtonReportsPersistentDialog() {
     await testCreateButtonDismissesBlockingDialog();
     await testCreateButtonDismissesDialogWithEscape();
     await testCreateButtonReportsPersistentDialog();
+    await testSelectsOnlyANewlyGeneratedTrack();
+    await testDoesNotFallBackToAnExistingTrack();
     console.log('Suno selector probe passed');
 })().catch((error) => {
     console.error(error);
