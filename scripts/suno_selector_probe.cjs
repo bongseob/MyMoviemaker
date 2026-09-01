@@ -90,7 +90,8 @@ async function testPromptModeSwitchesToDirectLyrics() {
         <textarea id="prompt-input" placeholder="What do you want your lyrics to be about? Suno will write new lyrics every generation."></textarea>
         <textarea id="style" placeholder="dramático, cajun, dynamic crescendos"></textarea>
         <script>
-            document.getElementById('write').addEventListener('click', () => {
+            document.getElementById('prompt').addEventListener('keydown', (event) => {
+                if (event.key !== 'ArrowLeft') return;
                 document.getElementById('write').setAttribute('aria-checked', 'true');
                 document.getElementById('prompt').setAttribute('aria-checked', 'false');
                 document.getElementById('prompt-input').remove();

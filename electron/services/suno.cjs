@@ -309,6 +309,18 @@ async function ensureSunoWriteLyricsMode(page, event, options = {}) {
         }
     }
 
+    // Suno's current radio group can ignore synthetic pointer clicks. Moving
+    // left from the selected Prompt radio reliably selects Write.
+    const promptControl = page.locator('button[role="radio"]:has-text("Prompt")[aria-checked="true"]').first();
+    if (await promptControl.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await promptControl.focus();
+        await page.keyboard.press('ArrowLeft');
+        await page.waitForTimeout(1000);
+        if (await hasVisible(page, ownLyricsInput, 2500)) {
+            return;
+        }
+    }
+
     const clickedByText = await clickVisibleTextControl(page, /write lyrics|enter lyrics|my lyrics|^write$|manual|직접|가사 쓰기|수동/);
     if (clickedByText) {
         await page.waitForTimeout(1000);
