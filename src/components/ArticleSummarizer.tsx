@@ -171,7 +171,8 @@ export default function ArticleSummarizer({ onResultChange, onSunoGenerated, ini
     setSunoStatus('Preparing...');
 
     try {
-      const response = await electron.generateSunoSong(result);
+      const prompts = await electron.getPrompts();
+      const response = await electron.generateSunoSong(result, prompts.sunoStyle);
       if (response.success) {
         const outputPath = response.outputPath ? `\n저장 위치: ${response.outputPath}` : '';
         setSunoStatus(`${response.message || 'Song generation completed.'}${outputPath}`);

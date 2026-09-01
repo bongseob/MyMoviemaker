@@ -115,14 +115,14 @@ interface ElectronApi {
   youtubeClearToken: () => Promise<IpcResult>;
   youtubeUpload: (data: YoutubeUploadPayload) => Promise<IpcResult>;
   onYoutubeUploadProgress: (callback: (value: number) => void) => void;
-  getPrompts: () => Promise<{gov: string, corporate: string, column: string, event: string}>;
-  savePrompts: (data: {gov: string, corporate: string, column: string, event: string}) => Promise<IpcResult>;
+  getPrompts: () => Promise<{sunoStyle: string, gov: string, corporate: string, column: string, event: string}>;
+  savePrompts: (data: {sunoStyle: string, gov: string, corporate: string, column: string, event: string}) => Promise<IpcResult>;
   processArticle: (text: string, articleType?: string) => Promise<IpcResult<ArticleSummary>>;
   loadArticleResult: () => Promise<IpcResult<ArticleSummary>>;
   publishArticle: (articleData: ArticleSummary) => Promise<IpcResult>;
   onPublishStatus: (callback: (status: string) => void) => void;
   removePublishStatusListener: () => void;
-  generateSunoSong: (articleData: ArticleSummary) => Promise<IpcResult>;
+  generateSunoSong: (articleData: ArticleSummary, stylePrompt: string) => Promise<IpcResult>;
   onSunoStatus: (callback: (status: string) => void) => void;
   removeSunoStatusListener: () => void;
   prepareTiktokUpload: (data: TiktokUploadPayload) => Promise<IpcResult>;

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Save, CheckCircle2 } from 'lucide-react';
 
 interface Prompts {
+    sunoStyle: string;
     gov: string;
     corporate: string;
     column: string;
@@ -15,6 +16,7 @@ interface PromptSettingsModalProps {
 
 export default function PromptSettingsModal({ isOpen, onClose }: PromptSettingsModalProps) {
     const [prompts, setPrompts] = useState<Prompts>({
+        sunoStyle: '아주 빠른 한국의 랩',
         gov: '',
         corporate: '',
         column: '',
@@ -55,6 +57,16 @@ export default function PromptSettingsModal({ isOpen, onClose }: PromptSettingsM
                 </div>
                 
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    <div className="space-y-2">
+                        <label className="text-sm font-bold text-slate-300">Suno 스타일 프롬프트</label>
+                        <textarea
+                            value={prompts.sunoStyle}
+                            onChange={(e) => setPrompts(prev => ({ ...prev, sunoStyle: e.target.value }))}
+                            className="w-full h-24 bg-black/40 border border-white/10 rounded-lg p-3 text-sm focus:border-primary outline-none transition-all text-white resize-none"
+                            placeholder="예: 아주 빠른 한국의 랩"
+                        />
+                        <p className="text-xs text-slate-500">Suno 노래 생성 시 Styles 입력란에 사용됩니다.</p>
+                    </div>
                     <div className="space-y-2">
                         <label className="text-sm font-bold text-slate-300">행정/구청 기사 프롬프트</label>
                         <textarea
@@ -103,7 +115,7 @@ export default function PromptSettingsModal({ isOpen, onClose }: PromptSettingsM
                     </button>
                     <button
                         onClick={handleSave}
-                        disabled={isSaving}
+                        disabled={isSaving || !prompts.sunoStyle.trim()}
                         className="bg-primary hover:bg-primary/80 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2"
                     >
                         <Save className="w-4 h-4" />

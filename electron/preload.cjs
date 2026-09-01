@@ -30,7 +30,7 @@ contextBridge.exposeInMainWorld('electron', {
         ipcRenderer.removeAllListeners('publish-status');
     },
     // Suno AI API
-    generateSunoSong: (articleData) => ipcRenderer.invoke('generate-suno-song', articleData),
+    generateSunoSong: (articleData, stylePrompt) => ipcRenderer.invoke('generate-suno-song', { articleData, stylePrompt }),
     onSunoStatus: (callback) => {
         ipcRenderer.on('suno-status', (_event, status) => callback(status));
     },

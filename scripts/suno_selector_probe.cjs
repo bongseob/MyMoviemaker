@@ -83,6 +83,29 @@ async function testFieldsAlreadyVisibleWithoutCustomTab() {
     });
 }
 
+async function testPromptModeSwitchesToDirectLyrics() {
+    await withPage(`
+        <button role="radio" id="write" aria-checked="false">Write</button>
+        <button role="radio" id="prompt" aria-checked="true">Prompt</button>
+        <textarea id="prompt-input" placeholder="What do you want your lyrics to be about? Suno will write new lyrics every generation."></textarea>
+        <textarea id="style" placeholder="dramático, cajun, dynamic crescendos"></textarea>
+        <script>
+            document.getElementById('write').addEventListener('click', () => {
+                document.getElementById('write').setAttribute('aria-checked', 'true');
+                document.getElementById('prompt').setAttribute('aria-checked', 'false');
+                document.getElementById('prompt-input').remove();
+                document.body.insertAdjacentHTML('beforeend', '<div role="textbox" contenteditable="true" aria-label="Lyrics editor" class="lyrics-editor-content"></div>');
+            });
+        </script>
+    `, async (page) => {
+        assert.strictEqual(await sunoLyricsInputs(page).count(), 0);
+        await ensureSunoAdvancedMode(page, eventSink(), { manualTimeoutMs: 100 });
+        await ensureSunoWriteLyricsMode(page, eventSink(), { manualTimeoutMs: 100 });
+        assert.strictEqual(await page.locator('#write').getAttribute('aria-checked'), 'true');
+        assert.strictEqual(await sunoLyricsInputs(page).count(), 1);
+    });
+}
+
 async function testCurrentSunoAdvancedEditorShape() {
     await withPage(`
         <button type="button" aria-label="Advanced">Advanced</button>
@@ -215,6 +238,7 @@ async function testDoesNotFallBackToAnExistingTrack() {
 (async () => {
     await testRenamedLyricsTab();
     await testFieldsAlreadyVisibleWithoutCustomTab();
+    await testPromptModeSwitchesToDirectLyrics();
     await testCurrentSunoAdvancedEditorShape();
     await testCreateButtonDismissesBlockingDialog();
     await testCreateButtonDismissesDialogWithEscape();

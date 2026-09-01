@@ -1,7 +1,7 @@
 const path = require('path');
 const { getErrorMessage } = require('../lib/errors.cjs');
 const { getOutputDir } = require('../lib/paths.cjs');
-const { assertArticleData } = require('../lib/validation.cjs');
+const { assertArticleData, assertText } = require('../lib/validation.cjs');
 
 // Suno AI Song Generation
 let sunoBrowserContext = null;
@@ -47,13 +47,32 @@ function sunoLyricsInputs(page) {
         'textarea[aria-label*="lyrics" i]',
         'textarea[aria-label*="가사" i]',
         'textarea[placeholder*="enter lyrics" i]',
-        'textarea[placeholder*="your lyrics" i]',
         'textarea[placeholder*="own lyrics" i]',
         'textarea[placeholder*="write your rhymes" i]',
-        'textarea[placeholder*="lyrics" i]',
+        'textarea[placeholder*="write your lyrics" i]',
         'textarea[placeholder*="가사" i]',
-        'textarea[placeholder*="직접" i]',
-        'textarea[placeholder*="가사" i]'
+        'textarea[placeholder*="직접" i]'
+    ].join(', '));
+}
+
+function sunoWriteLyricsControls(page) {
+    return page.locator([
+        'button[role="radio"]:has-text("Write")',
+        'button:has-text("Write Lyrics")',
+        '[role="button"]:has-text("Write Lyrics")',
+        'label:has-text("Write Lyrics")',
+        'button:has-text("Enter Lyrics")',
+        '[role="button"]:has-text("Enter Lyrics")',
+        'label:has-text("Enter Lyrics")',
+        'button:has-text("My Lyrics")',
+        '[role="button"]:has-text("My Lyrics")',
+        'label:has-text("My Lyrics")',
+        'button:has-text("직접")',
+        '[role="button"]:has-text("직접")',
+        'label:has-text("직접")',
+        'button:has-text("가사 쓰기")',
+        '[role="button"]:has-text("가사 쓰기")',
+        'label:has-text("가사 쓰기")'
     ].join(', '));
 }
 
@@ -184,9 +203,11 @@ async function waitForSunoLogin(page, event) {
 async function ensureSunoAdvancedMode(page, event, options = {}) {
     const lyricsInputs = sunoLyricsInputs(page);
     const styleInputs = sunoStyleInputs(page);
+    const writeLyricsControls = sunoWriteLyricsControls(page);
     const manualTimeoutMs = options.manualTimeoutMs ?? 120000;
 
-    if (await hasVisible(page, lyricsInputs, 2000) && await hasVisible(page, styleInputs, 2000)) {
+    if (await hasVisible(page, styleInputs, 2000)
+        && (await hasVisible(page, lyricsInputs, 500) || await hasVisible(page, writeLyricsControls, 500))) {
         return;
     }
 
@@ -230,7 +251,8 @@ async function ensureSunoAdvancedMode(page, event, options = {}) {
             await control.click({ force: true });
             await page.waitForTimeout(1200);
 
-            if (await hasVisible(page, lyricsInputs, 2500) && await hasVisible(page, styleInputs, 2500)) {
+            if (await hasVisible(page, styleInputs, 2500)
+                && (await hasVisible(page, lyricsInputs, 500) || await hasVisible(page, writeLyricsControls, 500))) {
                 return;
             }
         } catch (e) {
@@ -241,7 +263,8 @@ async function ensureSunoAdvancedMode(page, event, options = {}) {
     const clickedByText = await clickVisibleTextControl(page, /advanced|custom|lyrics|write lyrics|full song|song|고급|커스텀|맞춤|가사/);
     if (clickedByText) {
         await page.waitForTimeout(1500);
-        if (await hasVisible(page, lyricsInputs, 3000) && await hasVisible(page, styleInputs, 3000)) {
+        if (await hasVisible(page, styleInputs, 3000)
+            && (await hasVisible(page, lyricsInputs, 500) || await hasVisible(page, writeLyricsControls, 500))) {
             return;
         }
     }
@@ -249,7 +272,8 @@ async function ensureSunoAdvancedMode(page, event, options = {}) {
     event.sender.send('suno-status', 'Advanced/Custom 또는 Lyrics 입력 모드를 자동으로 찾지 못했습니다. Suno 창에서 가사와 스타일 입력창이 보이도록 직접 선택해주세요.');
     const deadline = Date.now() + manualTimeoutMs;
     while (Date.now() < deadline) {
-        if (await hasVisible(page, lyricsInputs, 1000) && await hasVisible(page, styleInputs, 1000)) {
+        if (await hasVisible(page, styleInputs, 1000)
+            && (await hasVisible(page, lyricsInputs, 500) || await hasVisible(page, writeLyricsControls, 500))) {
             return;
         }
         await page.waitForTimeout(1000);
@@ -259,52 +283,14 @@ async function ensureSunoAdvancedMode(page, event, options = {}) {
 }
 
 async function ensureSunoWriteLyricsMode(page, event, options = {}) {
-    const ownLyricsInput = page.locator([
-        '[contenteditable="true"][aria-label*="Lyrics" i]',
-        '[contenteditable="true"][aria-label*="가사" i]',
-        '.lyrics-editor-content[contenteditable="true"]',
-        '[data-testid="lyrics-textarea"]',
-        '[data-testid*="lyrics" i] textarea',
-        '[data-testid="lyrics-input-textarea"][placeholder*="own lyrics" i]',
-        'textarea[placeholder*="own lyrics" i]',
-        'textarea[placeholder*="enter lyrics" i]',
-        'textarea[placeholder*="your lyrics" i]',
-        'textarea[placeholder*="write your rhymes" i]',
-        'textarea[placeholder*="lyrics" i]',
-        'textarea[placeholder*="가사" i]',
-        'textarea[placeholder*="직접" i]',
-        'textarea[placeholder*="직접" i]',
-        'textarea[placeholder*="가사" i]'
-    ].join(', '));
+    const ownLyricsInput = sunoLyricsInputs(page);
     const manualTimeoutMs = options.manualTimeoutMs ?? 120000;
 
     if (await hasVisible(page, ownLyricsInput, 1500)) {
         return;
     }
 
-    const writeLyricsControls = page.locator([
-        'button:has-text("Write Lyrics")',
-        '[role="button"]:has-text("Write Lyrics")',
-        'label:has-text("Write Lyrics")',
-        'button:has-text("Manual")',
-        '[role="button"]:has-text("Manual")',
-        'label:has-text("Manual")',
-        'button:has-text("Enter Lyrics")',
-        '[role="button"]:has-text("Enter Lyrics")',
-        'label:has-text("Enter Lyrics")',
-        'button:has-text("My Lyrics")',
-        '[role="button"]:has-text("My Lyrics")',
-        'label:has-text("My Lyrics")',
-        'button:has-text("Lyrics")',
-        '[role="button"]:has-text("Lyrics")',
-        'label:has-text("Lyrics")',
-        'button:has-text("직접")',
-        '[role="button"]:has-text("직접")',
-        'label:has-text("직접")',
-        'button:has-text("가사 쓰기")',
-        '[role="button"]:has-text("가사 쓰기")',
-        'label:has-text("가사 쓰기")'
-    ].join(', '));
+    const writeLyricsControls = sunoWriteLyricsControls(page);
 
     const count = await writeLyricsControls.count();
     for (let i = 0; i < count; i++) {
@@ -323,7 +309,7 @@ async function ensureSunoWriteLyricsMode(page, event, options = {}) {
         }
     }
 
-    const clickedByText = await clickVisibleTextControl(page, /write lyrics|enter lyrics|my lyrics|lyrics|manual|직접|가사 쓰기|가사|수동/);
+    const clickedByText = await clickVisibleTextControl(page, /write lyrics|enter lyrics|my lyrics|^write$|manual|직접|가사 쓰기|수동/);
     if (clickedByText) {
         await page.waitForTimeout(1000);
         if (await hasVisible(page, ownLyricsInput, 2500)) {
@@ -545,12 +531,15 @@ async function findNewSunoTrack(page, existingTrackIds) {
 }
 
 function registerSunoIpc({ ipcMain, app, isDev }) {
-    ipcMain.handle('generate-suno-song', async (event, articleData) => {
+    ipcMain.handle('generate-suno-song', async (event, payload) => {
         const fs = require('fs');
         const { chromium } = require('playwright-extra');
         const stealth = require('puppeteer-extra-plugin-stealth')();
         chromium.use(stealth);
-        articleData = assertArticleData(articleData);
+        const articleData = assertArticleData(payload?.articleData || payload);
+        const stylePrompt = payload?.articleData
+            ? assertText(payload.stylePrompt, 'Suno style prompt', 1000)
+            : '아주 빠른 한국의 랩';
         
         const userDataDir = path.join(app.getPath('userData'), 'suno-playwright-session');
         const sunoDir = getOutputDir(app, isDev, 'suno');
@@ -634,7 +623,7 @@ function registerSunoIpc({ ipcMain, app, isDev }) {
     
             // 2. Fill Style
             const styleInput = await firstVisible(page, sunoStyleInputs(page));
-            await replaceInputText(page, styleInput, '아주 빠른 한국의 랩');
+            await replaceInputText(page, styleInput, stylePrompt);
     
             /*
             const lyricsInput = await firstVisible(page, page.locator('[data-testid*="lyrics-wrapper" i] textarea, [data-testid="lyrics-input-textarea"], textarea[placeholder*="lyrics" i], textarea[placeholder*="가사" i]'));
@@ -758,6 +747,7 @@ module.exports = {
         firstVisible,
         hasVisible,
         sunoLyricsInputs,
+        sunoWriteLyricsControls,
         sunoStyleInputs,
         sunoTitleInputs,
         ensureSunoAdvancedMode,

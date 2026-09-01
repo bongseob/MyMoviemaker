@@ -25,6 +25,7 @@ function buildCopyText(articleData) {
 }
 
 const DEFAULT_PROMPTS = {
+    sunoStyle: '아주 빠른 한국의 랩',
     gov: `
     [행정/구청 홍보 기사 작성 규칙]
     - 기관의 공익적 성과와 주민 체감 효과를 강조한다.
@@ -57,7 +58,7 @@ function getPromptManager(app) {
         try {
             if (fs.existsSync(promptsFilePath)) {
                 const data = fs.readFileSync(promptsFilePath, 'utf-8');
-                return JSON.parse(data);
+                return { ...DEFAULT_PROMPTS, ...JSON.parse(data) };
             }
         } catch (err) {
             console.error('Failed to load prompts, using defaults:', err);
