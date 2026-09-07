@@ -542,6 +542,29 @@ async function findNewSunoTrack(page, existingTrackIds) {
     return null;
 }
 
+async function sunoMp3DownloadButton(page) {
+    // The current UI selects a format in a dialog before starting the download.
+    // Scope to the visible dialog so hidden cookie/previous dialogs cannot match.
+    const dialog = page.locator('[role="dialog"]:visible').filter({
+        has: page.getByRole('button', { name: 'MP3', exact: true })
+    }).first();
+    if (await dialog.isVisible()) {
+        // These are multi-select toggles; clicking an already selected MP3
+        // clears it. Other selected formats would produce a ZIP instead.
+        for (const format of ['M4A', 'MP3', 'WAV', 'MP4 video asset']) {
+            const option = dialog.getByRole('button', { name: format, exact: true });
+            if (!await option.isVisible()) continue;
+            const selected = await option.evaluate(element =>
+                element.getAttribute('aria-pressed') === 'true'
+                || element.getAttribute('aria-checked') === 'true'
+                || element.classList.contains('bg-foreground-primary'));
+            if (selected !== (format === 'MP3')) await option.click();
+        }
+        return dialog.getByRole('button', { name: 'Download', exact: true });
+    }
+    return page.locator('button[aria-label="MP3 Audio"], button:has-text("MP3 Audio"), [role="menuitem"]:has-text("MP3 Audio")').first();
+}
+
 function registerSunoIpc({ ipcMain, app, isDev }) {
     ipcMain.handle('generate-suno-song', async (event, payload) => {
         const fs = require('fs');
@@ -701,7 +724,7 @@ function registerSunoIpc({ ipcMain, app, isDev }) {
                             await page.waitForTimeout(1500); // 서브 메뉴가 나타날 시간을 충분히 부여    
                                 
                             // Click MP3 Audio    
-                            const audioButton = page.locator('button[aria-label="MP3 Audio"], button:has-text("MP3 Audio"), [role="menuitem"]:has-text("MP3 Audio")').first();    
+                            const audioButton = await sunoMp3DownloadButton(page);
                             if (await audioButton.isVisible()) {    
         
                                 event.sender.send('suno-status', 'MP3 다운로드를 시작합니다...');
@@ -768,6 +791,7 @@ module.exports = {
         dismissSunoBlockingDialog,
         clickSunoCreateButton,
         snapshotSunoTrackIds,
-        findNewSunoTrack
+        findNewSunoTrack,
+        sunoMp3DownloadButton
     }
 };
