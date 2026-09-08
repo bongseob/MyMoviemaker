@@ -560,9 +560,39 @@ async function sunoMp3DownloadButton(page) {
                 || element.classList.contains('bg-foreground-primary'));
             if (selected !== (format === 'MP3')) await option.click();
         }
-        return dialog.getByRole('button', { name: 'Download', exact: true });
+        return dialog.getByRole('button', { name: /^(Unlock & Download|Download)$/ });
     }
     return page.locator('button[aria-label="MP3 Audio"], button:has-text("MP3 Audio"), [role="menuitem"]:has-text("MP3 Audio")').first();
+}
+
+async function downloadSunoMp3(page, button, timeout = 120000) {
+    // Unlock can either download immediately or reveal a separate Download action.
+    // Keep the listener active across both steps, and never repeat the unlock.
+    let download;
+    const onDownload = value => { download = value; };
+    page.on('download', onDownload);
+    const deadline = Date.now() + timeout;
+    try {
+        const unlocking = (await button.innerText()).trim() === 'Unlock & Download';
+        await button.click({ timeout: Math.max(1, deadline - Date.now()) });
+        let confirmed = !unlocking;
+        while (Date.now() < deadline) {
+            if (download) return download;
+            if (!confirmed) {
+                const next = await sunoMp3DownloadButton(page);
+                if (await next.isVisible() && await next.isEnabled()
+                    && (await next.innerText()).trim() === 'Download') {
+                    if (download) return download;
+                    confirmed = true;
+                    await next.click({ timeout: Math.max(1, deadline - Date.now()) });
+                }
+            }
+            await page.waitForTimeout(250);
+        }
+        throw new Error('Suno MP3 download timed out after unlock/download action');
+    } finally {
+        page.off('download', onDownload);
+    }
 }
 
 function registerSunoIpc({ ipcMain, app, isDev }) {
@@ -731,10 +761,7 @@ function registerSunoIpc({ ipcMain, app, isDev }) {
                                 
                                 // Setup download listener before clicking so the event cannot be missed.
                                 downloadWasTriggered = true;
-                                const [download] = await Promise.all([
-                                    page.waitForEvent('download', { timeout: 120000 }),
-                                    audioButton.click()
-                                ]);
+                                const download = await downloadSunoMp3(page, audioButton);
                                 const failure = await download.failure();
                                 if (failure) {
                                     throw new Error(`Suno download failed: ${failure}`);
@@ -792,6 +819,7 @@ module.exports = {
         clickSunoCreateButton,
         snapshotSunoTrackIds,
         findNewSunoTrack,
-        sunoMp3DownloadButton
+        sunoMp3DownloadButton,
+        downloadSunoMp3
     }
 };
